@@ -2195,38 +2195,145 @@ export const DashboardView = ({
           onClose={() => setShowNewComplaintModal(false)}
           onSubmit={(data) => {
             if (data.decision === 'ACCEPT') {
-              const newIntake: IntakeComplaint = {
-                id: `intake-${Date.now()}`,
-                intake_channel: data.intake_channel,
+              const dept = departments.find(d => d.name === data.department_name) || departments[0];
+              const wardObj = wards.find(w => w.ward_number === data.ward_number);
+              const ticketNum = `SNP-2026-${String(tickets.length + 842).padStart(4, '0')}`;
+              const deadlineHours = data.sla_hours || dept.default_sla_hours || 48;
+
+              let deadlineMs = Math.round(deadlineHours * 3600 * 1000);
+              if (deadlineHours < 0.01) {
+                deadlineMs = 30 * 1000;
+              } else if (deadlineHours < 0.05) {
+                deadlineMs = 60 * 1000;
+              }
+              const deadlineDate = new Date(Date.now() + deadlineMs);
+
+              const formatDeadlineDisplay = (hours: number, date: Date) => {
+                const timeStr = date.toLocaleTimeString('en-US', { hour: '2-digit', minute: '2-digit', second: '2-digit' });
+                if (hours < 0.01) return `30s Target (${timeStr})`;
+                if (hours < 0.05) return `1m Target (${timeStr})`;
+                return date.toLocaleString('en-IN', { hour: '2-digit', minute: '2-digit', day: '2-digit', month: '2-digit' });
+              };
+
+              const formatSlaLabel = (hours: number) => {
+                if (hours < 0.01) return '30 Seconds (⚡ Fast Testing)';
+                if (hours < 0.05) return '1 Minute (⚡ Fast Testing)';
+                return `${hours} Hours`;
+              };
+
+              // 1. Create official municipal ticket directly
+              const newTicket: Ticket = {
+                id: `tkt-${Date.now()}`,
+                ticket_number: ticketNum,
                 citizen_name: data.citizen_name,
                 citizen_phone: data.citizen_phone,
                 ward_number: data.ward_number,
                 address: data.address,
                 landmark: data.landmark || '',
                 category_name: data.category_name,
-                department_name: data.department_name || '',
+                department_name: dept.name,
                 problem_description: data.problem_description,
-                status: 'PENDING_REVIEW',
-                is_after_hours: false,
-                received_at: 'Today ' + new Date().toLocaleTimeString('en-US', { hour: '2-digit', minute: '2-digit' }),
-                sla_hours: data.sla_hours || 0.008333
+                status: 'REGISTERED',
+                forwarding_option: data.forwarding_option || 'COUNCILLOR_AND_OFFICER',
+                sla_hours: deadlineHours,
+                sla_deadline: formatDeadlineDisplay(deadlineHours, deadlineDate),
+                sla_deadline_iso: deadlineDate.toISOString(),
+                is_overdue: false,
+                is_escalated: false,
+                assigned_officer_name: dept.head_officer_name,
+                assigned_officer_phone: dept.head_officer_phone,
+                registration_time: 'Today ' + new Date().toLocaleTimeString('en-US', { hour: '2-digit', minute: '2-digit' }),
+                authority_confirmed: false
               };
 
-              onAddIntake(newIntake);
+              onAddTicket(newTicket);
+
+              // 2. Build official pre-filled WhatsApp messages
+              const citizenMsg = `स्मार्ट नगर परिषद चित्तौड़गढ़ - शिकायत पावती\nनमस्ते ${data.citizen_name} जी,\nआपकी शिकायत सत्यापित कर पोर्टल पर दर्ज कर ली गई है।\n\n📋 टिकट सं.: ${ticketNum}\n📍 वार्ड: वार्ड ${data.ward_number}\n🏢 विभाग: ${dept.name}\n📍 स्थान: ${data.address}\n📝 समस्या: ${data.problem_description}\n⏱️ निस्तारण समय (SLA): ${formatSlaLabel(deadlineHours)}\n\n- पोर्टल कंट्रोल रूम, नगर परिषद चित्तौड़गढ़`;
+              const councillorMsg = `स्मार्ट नगर परिषद चित्तौड़गढ़ - वार्ड शिकायत सूचना\nआदरणीय पार्षद महोदय (${wardObj?.councillor_name || 'पार्षद'} जी),\nआपके वार्ड ${data.ward_number} से एक नई शिकायत सत्यापित होकर दर्ज हुई है:\n\n📋 टिकट सं.: ${ticketNum}\n👤 नागरिक: ${data.citizen_name} (${data.citizen_phone})\n📍 स्थान: ${data.address}\n🏢 विभाग: ${dept.name}\n📝 समस्या विवरण: ${data.problem_description}\n⏱️ लक्षित SLA समय: ${formatSlaLabel(deadlineHours)}\n\nकृपया संज्ञान लेकर समाधान में सहयोग करें।\n- पोर्टल कंट्रोल रूम, नगर परिषद चित्तौड़गढ़`;
+              const officerMsg = `कार्यालय आदेश / प्राथमिकता कार्य:\nस्मार्ट नगर परिषद चित्तौड़गढ़ शिकायत निवारण पोर्टल\n\n📋 टिकट सं.: ${ticketNum}\n🏢 विभाग: ${dept.name}\n👤 नागरिक: ${data.citizen_name} (${data.citizen_phone})\n📍 वार्ड व पता: वार्ड ${data.ward_number}, ${data.address}\n📝 समस्या विवरण: ${data.problem_description}\n⏱️ समाधान SLA सीमा: ${formatSlaLabel(deadlineHours)}\n\nकृपया प्राथमिकता के आधार पर कार्य दल भेजकर समाधान सुनिश्चित करें।\n- पोर्टल मैनेजर, नगर परिषद चित्तौड़गढ़`;
+
+              // 3. Log notifications
+              onAddNotification({
+                id: `notif-${Date.now()}-cit`,
+                ticket_number: ticketNum,
+                recipient_type: 'CITIZEN',
+                recipient_name: `${data.citizen_name} (Citizen)`,
+                recipient_phone: data.citizen_phone,
+                channel: 'WHATSAPP',
+                template_name: 'snp_citizen_ack',
+                message_content: citizenMsg,
+                status: 'DELIVERED',
+                sent_at: 'Just now'
+              });
+
+              onAddNotification({
+                id: `notif-${Date.now()}-c`,
+                ticket_number: ticketNum,
+                recipient_type: 'COUNCILLOR',
+                recipient_name: `${wardObj?.councillor_name || 'Councillor'} (Ward ${data.ward_number})`,
+                recipient_phone: wardObj?.councillor_phone || '+91 98290 00000',
+                channel: 'WHATSAPP',
+                template_name: 'snp_councillor_forward',
+                message_content: councillorMsg,
+                status: 'DELIVERED',
+                sent_at: 'Just now'
+              });
+
+              onAddNotification({
+                id: `notif-${Date.now()}-o`,
+                ticket_number: ticketNum,
+                recipient_type: 'OFFICER',
+                recipient_name: `${dept.head_officer_name} (${dept.code})`,
+                recipient_phone: dept.head_officer_phone,
+                channel: 'WHATSAPP',
+                template_name: 'snp_officer_assign',
+                message_content: officerMsg,
+                status: 'DELIVERED',
+                sent_at: 'Just now'
+              });
+
+              const waActions: WhatsAppAction[] = [
+                {
+                  role: 'CITIZEN',
+                  label: `Citizen Confirmation (नागरिक: ${data.citizen_name})`,
+                  phone: data.citizen_phone,
+                  recipientName: data.citizen_name,
+                  message: citizenMsg
+                },
+                {
+                  role: 'COUNCILLOR',
+                  label: `Ward Councillor (वार्ड पार्षद: ${wardObj?.councillor_name || 'Councillor'})`,
+                  phone: wardObj?.councillor_phone || '+91 98290 00000',
+                  recipientName: wardObj?.councillor_name,
+                  message: councillorMsg
+                },
+                {
+                  role: 'OFFICER',
+                  label: `Nodal Officer (विभाग अधिकारी: ${dept.head_officer_name})`,
+                  phone: dept.head_officer_phone,
+                  recipientName: dept.head_officer_name,
+                  message: officerMsg
+                }
+              ];
+
               setShowNewComplaintModal(false);
-              setActiveTab('INTAKE');
-              setIntakeFilterStatus('ALL');
+              setActiveTab('TICKETS');
+              setSelectedStatus('ALL');
 
               setStatusModalConfig({
                 isOpen: true,
                 type: 'success',
-                title: 'Accepted!',
-                subtitle: `Complaint from ${data.citizen_name} has been accepted into the Intake Queue.`,
+                title: 'Official Ticket Generated!',
+                subtitle: `Complaint from ${data.citizen_name} has been verified and registered as Official Ticket ${ticketNum}.`,
                 details: [
+                  `Ticket Number: ${ticketNum}`,
                   `Citizen: ${data.citizen_name} (${data.citizen_phone})`,
-                  `Channel: ${data.intake_channel === 'WHATSAPP' ? 'WhatsApp 24/7' : 'Helpline Call (10 AM - 6 PM)'}`,
-                  `Ward & Locality: Ward ${data.ward_number} - ${data.address}`
+                  `Ward & Locality: Ward ${data.ward_number} - ${data.address}`,
+                  `Department: ${dept.name} (${dept.head_officer_name})`,
+                  `Resolution SLA: ${formatSlaLabel(deadlineHours)}`
                 ],
+                whatsAppActions: waActions,
                 confirmText: 'OK'
               });
               return;

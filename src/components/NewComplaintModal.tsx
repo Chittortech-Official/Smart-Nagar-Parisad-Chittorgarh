@@ -12,7 +12,8 @@ import {
   Building2,
   MessageSquare,
   BellOff,
-  CheckCircle2
+  CheckCircle2,
+  AlertTriangle
 } from 'lucide-react';
 
 export type ComplaintDecision = 'ACCEPT' | 'REJECT';
@@ -61,6 +62,11 @@ export const NewComplaintModal = ({
   const [forwardingOption, setForwardingOption] = useState<ForwardingOption>('COUNCILLOR_AND_OFFICER');
   const [slaHours, setSlaHours] = useState<number>(24);
   const [notifyCitizenOnReject, setNotifyCitizenOnReject] = useState<boolean>(true);
+  const [validationAlert, setValidationAlert] = useState<{
+    title: string;
+    subtitle: string;
+    details?: string[];
+  } | null>(null);
 
   // Auto-update default SLA when department changes
   useEffect(() => {
@@ -82,26 +88,84 @@ export const NewComplaintModal = ({
 
   const handleSubmit = (e: React.FormEvent) => {
     e.preventDefault();
-    if (!citizenName.trim() || !address.trim()) {
-      alert("Please fill all mandatory fields (Citizen Name, Address).");
+
+    // 1. Citizen Name
+    if (!citizenName.trim()) {
+      setValidationAlert({
+        title: "नागरिक का नाम आवश्यक है (Citizen Name Required)",
+        subtitle: "कृपया शिकायतकर्ता नागरिक का पूरा नाम दर्ज करें।",
+        details: [
+          "Citizen Full Name field khali nahi ho sakta.",
+          "Shikayat darj karne ke liye nagrik ka naam likhna anivarya hai."
+        ]
+      });
       return;
     }
-    if (decision === 'ACCEPT' && !description.trim()) {
-      alert("Please provide Detailed Complaint Description for accepted complaint.");
+
+    // 2. Validate 10-Digit Indian Mobile Number (starts with 6, 7, 8, or 9)
+    const rawDigits = citizenPhone.replace(/\D/g, '').slice(-10);
+    const isValidIndianMobile = /^[6-9]\d{9}$/.test(rawDigits);
+    if (!isValidIndianMobile) {
+      setValidationAlert({
+        title: "अमान्य मोबाइल नंबर (Invalid Mobile Number)",
+        subtitle: "कृपया सही 10 अंकों का भारतीय मोबाइल नंबर दर्ज करें।",
+        details: [
+          "मोबाइल नंबर ठीक 10 अंकों का होना आवश्यक है।",
+          "नंबर 6, 7, 8, या 9 से शुरू होना चाहिए (Indian Telecom Standard)।",
+          "उदाहरण (Example): 98290 12345 (Total 10 digits)"
+        ]
+      });
       return;
     }
+    const formattedPhone = `+91 ${rawDigits}`;
+
+    // 3. For ACCEPT: Address and Detailed Description are strictly mandatory
+    if (decision === 'ACCEPT') {
+      if (!address.trim()) {
+        setValidationAlert({
+          title: "स्थान एवं पता आवश्यक है (Address Required)",
+          subtitle: "सफाई या मरम्मत टीम को मौके पर भेजने हेतु पूरा पता आवश्यक है।",
+          details: [
+            "मकान / दुकान नंबर, गली का नाम या मोहल्ला दर्ज करें।",
+            "बिना पते के फील्ड टीम मौके पर कार्य का समाधान नहीं कर सकेगी।"
+          ]
+        });
+        return;
+      }
+      if (!description.trim()) {
+        setValidationAlert({
+          title: "समस्या का विवरण आवश्यक है (Description Required)",
+          subtitle: "कृपया नागरिक द्वारा बताई गई समस्या का विवरण दर्ज करें।",
+          details: [
+            "Detailed Complaint Description field khali nahi ho sakta.",
+            "Taaki vibhag ke officer ko samasya spasht roop se samajh aa sake."
+          ]
+        });
+        return;
+      }
+    }
+
+    // 4. For REJECT: Rejection Reason is mandatory
     if (decision === 'REJECT' && !rejectionReason.trim()) {
-      alert("Please enter the official rejection reason.");
+      setValidationAlert({
+        title: "अस्वीकृति का कारण आवश्यक है (Rejection Reason Required)",
+        subtitle: "कृपया शिकायत अस्वीकृत (Reject) करने का आधिकारिक कारण दर्ज करें।",
+        details: [
+          "उदा. नगर परिषद सीमा से बाहर, निजी विवाद, या गलत कॉल।",
+          "यह कारण नागरिक को WhatsApp सूचना में भी भेजा जाता है।"
+        ]
+      });
       return;
     }
+
     onSubmit({
       decision,
       rejection_reason: decision === 'REJECT' ? rejectionReason.trim() : undefined,
-      citizen_name: citizenName,
-      citizen_phone: citizenPhone,
+      citizen_name: citizenName.trim(),
+      citizen_phone: formattedPhone,
       ward_number: Number(wardNumber),
-      address,
-      landmark: decision === 'ACCEPT' ? landmark : '',
+      address: address.trim() || 'N/A (Rejected Complaint)',
+      landmark: decision === 'ACCEPT' ? landmark.trim() : '',
       department_name: decision === 'ACCEPT' ? selectedDept : 'N/A (Rejected)',
       category_name: categoryName,
       problem_description: description.trim() || (decision === 'REJECT' ? `Rejection Reason: ${rejectionReason}` : ''),
@@ -298,17 +362,29 @@ export const NewComplaintModal = ({
                 </div>
 
                 <div className="space-y-1.5">
-                  <label className="font-bold text-slate-700 uppercase tracking-wider text-[11px]">
-                    Mobile Number *
-                  </label>
-                  <input
-                    type="text"
-                    required
-                    value={citizenPhone}
-                    onChange={(e) => setCitizenPhone(e.target.value)}
-                    placeholder="+91 94140 00000"
-                    className="w-full p-2.5 rounded-lg border border-slate-200 bg-white text-xs font-mono focus:ring-2 focus:ring-blue-600 focus:outline-none"
-                  />
+                  <div className="flex items-center justify-between">
+                    <label className="font-bold text-slate-700 uppercase tracking-wider text-[11px]">
+                      Mobile Number (10 Digits) *
+                    </label>
+                    <span className="text-[10px] text-slate-400 font-mono">Starts with 6-9</span>
+                  </div>
+                  <div className="relative flex items-center">
+                    <span className="absolute left-2.5 text-xs font-bold text-slate-600 select-none bg-slate-100 px-1.5 py-0.5 rounded border border-slate-200">
+                      🇮🇳 +91
+                    </span>
+                    <input
+                      type="tel"
+                      required
+                      value={citizenPhone.replace(/^\+91\s*/, '')}
+                      onChange={(e) => {
+                        const val = e.target.value.replace(/\D/g, '').slice(0, 10);
+                        setCitizenPhone(`+91 ${val}`);
+                      }}
+                      placeholder="98290 12345"
+                      maxLength={10}
+                      className="w-full pl-17 pr-3 py-2.5 rounded-lg border border-slate-200 bg-white text-xs font-mono font-bold tracking-wider focus:ring-2 focus:ring-blue-600 focus:outline-none"
+                    />
+                  </div>
                 </div>
               </div>
 
@@ -354,15 +430,20 @@ export const NewComplaintModal = ({
 
               {/* Exact Locality & Address */}
               <div className="space-y-1.5">
-                <label className="font-bold text-slate-700 uppercase tracking-wider text-[11px]">
-                  Exact Locality &amp; Street Address *
-                </label>
+                <div className="flex items-center justify-between">
+                  <label className="font-bold text-slate-700 uppercase tracking-wider text-[11px]">
+                    Exact Locality &amp; Street Address {decision === 'ACCEPT' ? '*' : '(Optional)'}
+                  </label>
+                  {decision === 'REJECT' && (
+                    <span className="text-[10px] text-slate-400">Not required for rejected calls</span>
+                  )}
+                </div>
                 <input
                   type="text"
-                  required
+                  required={decision === 'ACCEPT'}
                   value={address}
                   onChange={(e) => setAddress(e.target.value)}
-                  placeholder="Plot/Shop No., Street name, Mohalla, Near circle..."
+                  placeholder={decision === 'ACCEPT' ? "Plot/Shop No., Street name, Mohalla, Near circle..." : "Optional address for rejected records"}
                   className="w-full p-2.5 rounded-lg border border-slate-200 bg-white text-xs focus:ring-2 focus:ring-blue-600 focus:outline-none"
                 />
               </div>
@@ -675,7 +756,7 @@ export const NewComplaintModal = ({
               <span className={`inline-block w-2 h-2 rounded-full ${decision === 'ACCEPT' ? 'bg-emerald-500' : 'bg-rose-500'} animate-pulse`} />
               <span>
                 {decision === 'ACCEPT' 
-                  ? 'Complaint will be accepted and forwarded directly into the Intake Queue' 
+                  ? 'Official municipal complaint ticket will be generated & dispatched directly' 
                   : `Complaint rejected & logged into audit trail • ${notifyCitizenOnReject ? 'WhatsApp receipt will be sent to citizen' : 'Silent rejection (Citizen will not be notified)'}`}
               </span>
             </div>
@@ -696,12 +777,60 @@ export const NewComplaintModal = ({
               >
                 <TicketIcon className="w-4 h-4" />
                 <span className="text-sm">
-                  {decision === 'ACCEPT' ? 'Accept & Send to Intake Queue' : 'Reject Complaint & Record Audit'}
+                  {decision === 'ACCEPT' ? 'Register & Generate Official Ticket' : 'Reject Complaint & Record Audit'}
                 </span>
               </button>
             </div>
           </div>
         </form>
+
+        {/* Custom High-Quality Portal Notification Dialog (No browser alert) */}
+        {validationAlert && (
+          <div className="fixed inset-0 z-60 flex items-center justify-center p-4 bg-slate-950/70 backdrop-blur-sm animate-in fade-in duration-150">
+            <div 
+              className="relative w-full max-w-md bg-white rounded-3xl shadow-2xl border border-amber-300 p-6 md:p-7 text-center space-y-4 animate-in zoom-in-95 duration-150 select-none"
+              onClick={(e) => e.stopPropagation()}
+            >
+              {/* Circular Amber Warning Icon */}
+              <div className="flex justify-center">
+                <div className="w-16 h-16 rounded-2xl bg-amber-50 border border-amber-300 text-amber-600 flex items-center justify-center shadow-xs">
+                  <AlertTriangle className="w-8 h-8 stroke-[2.2]" />
+                </div>
+              </div>
+
+              {/* Title & Subtitle */}
+              <div className="space-y-1">
+                <h3 className="text-base sm:text-lg font-bold text-slate-900 leading-snug">
+                  {validationAlert.title}
+                </h3>
+                <p className="text-xs text-slate-600">
+                  {validationAlert.subtitle}
+                </p>
+              </div>
+
+              {/* Details List */}
+              {validationAlert.details && validationAlert.details.length > 0 && (
+                <div className="p-3.5 rounded-xl bg-amber-50/80 border border-amber-200 text-left space-y-1.5">
+                  {validationAlert.details.map((d, i) => (
+                    <div key={i} className="flex items-start gap-2 text-xs text-amber-950 font-medium">
+                      <span className="text-amber-600 font-bold mt-0.5">•</span>
+                      <span>{d}</span>
+                    </div>
+                  ))}
+                </div>
+              )}
+
+              {/* Close Button */}
+              <button
+                type="button"
+                onClick={() => setValidationAlert(null)}
+                className="w-full py-3 rounded-xl bg-slate-900 hover:bg-slate-800 text-white font-bold text-xs uppercase tracking-wider shadow-md hover:shadow-lg transition-all cursor-pointer ring-2 ring-slate-900/10 active:scale-98"
+              >
+                समझ गया / OK (Theek Hai)
+              </button>
+            </div>
+          </div>
+        )}
       </div>
     </div>
   );

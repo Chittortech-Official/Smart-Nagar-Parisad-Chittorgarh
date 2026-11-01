@@ -190,16 +190,85 @@ export function App() {
   };
 
   const handleUpdateTicket = async (updatedTicket: Ticket) => {
+    const prevTicket = tickets.find(t => t.id === updatedTicket.id || t.ticket_number === updatedTicket.ticket_number);
     setTickets(prev => prev.map(t => t.id === updatedTicket.id ? updatedTicket : t));
+
     if (supabase) {
       try {
-        await supabase.from('tickets').update({
+        // 1. Update the master tickets table in Supabase
+        const updatePayload: Record<string, any> = {
           status: updatedTicket.status,
           is_overdue: updatedTicket.is_overdue,
           is_escalated: updatedTicket.is_escalated
-        }).eq('ticket_number', updatedTicket.ticket_number);
+        };
+        if (updatedTicket.resolution_time) {
+          updatePayload.resolution_time = new Date().toISOString();
+        }
+        if (updatedTicket.closed_at) {
+          updatePayload.closed_at = new Date().toISOString();
+        }
+
+        await supabase
+          .from('tickets')
+          .update(updatePayload)
+          .eq('ticket_number', updatedTicket.ticket_number);
+
+        // 2. Fetch the ticket's Supabase UUID
+        const { data: ticketRow } = await supabase
+          .from('tickets')
+          .select('id')
+          .eq('ticket_number', updatedTicket.ticket_number)
+          .single();
+
+        const ticketDbId = ticketRow?.id;
+
+        if (ticketDbId) {
+          // 3. Log to ticket_history if status changed
+          if (prevTicket && prevTicket.status !== updatedTicket.status) {
+            let actionType = 'STATUS_UPDATED';
+            let notes = `Status changed from ${prevTicket.status} to ${updatedTicket.status}`;
+
+            if (updatedTicket.status === 'RESOLVED_AWAITING_CITIZEN') {
+              actionType = 'AUTHORITY_VERIFIED';
+              notes = updatedTicket.authority_notes || 'Officer confirmed field resolution';
+            } else if (updatedTicket.status === 'CLOSED') {
+              actionType = 'CITIZEN_CONFIRMED_CLOSED';
+              notes = updatedTicket.citizen_feedback || 'Citizen confirmed satisfaction';
+            } else if (updatedTicket.status === 'REOPENED') {
+              actionType = 'CITIZEN_REOPENED';
+              notes = updatedTicket.citizen_feedback || 'Citizen reported unresolved';
+            }
+
+            await supabase.from('ticket_history').insert([{
+              ticket_id: ticketDbId,
+              previous_status: prevTicket.status,
+              new_status: updatedTicket.status,
+              action_type: actionType,
+              notes: notes
+            }]);
+          }
+
+          // 4. Log to authority_confirmations if Step 1 was just verified
+          if (updatedTicket.authority_confirmed && (!prevTicket || !prevTicket.authority_confirmed)) {
+            await supabase.from('authority_confirmations').insert([{
+              ticket_id: ticketDbId,
+              officer_confirmed: true,
+              verification_notes: updatedTicket.authority_notes || 'Officer verified resolution on call'
+            }]);
+          }
+
+          // 5. Log to citizen_confirmations if Step 2 was just completed
+          if (updatedTicket.citizen_satisfied !== undefined && (!prevTicket || prevTicket.citizen_satisfied !== updatedTicket.citizen_satisfied)) {
+            await supabase.from('citizen_confirmations').insert([{
+              ticket_id: ticketDbId,
+              citizen_satisfied: updatedTicket.citizen_satisfied,
+              citizen_feedback: updatedTicket.citizen_feedback || (updatedTicket.citizen_satisfied ? 'Satisfied with resolution' : 'Not satisfied'),
+              satisfaction_rating: updatedTicket.citizen_satisfied ? 5 : 1
+            }]);
+          }
+        }
       } catch (err) {
-        console.warn("Supabase ticket update:", err);
+        console.warn("Supabase ticket update & logging exception:", err);
       }
     }
   };
@@ -208,27 +277,71 @@ export function App() {
     setTickets(prev => [newTicket, ...prev]);
     if (supabase) {
       try {
-        const dept = departments.find(d => d.name === newTicket.department_name) || departments[0];
-        const { data: catData } = await supabase.from('complaint_categories').select('id').eq('department_id', dept.id).limit(1);
-        const catId = catData?.[0]?.id || 'a8ace452-229a-4fe9-aca7-489f400f8a34';
+        // Resolve real Supabase Department UUID
+        let deptId = departments.find(d => d.name === newTicket.department_name)?.id;
+        if (!deptId || deptId.startsWith('dep-')) {
+          const { data: deptRows } = await supabase
+            .from('departments')
+            .select('id')
+            .eq('name', newTicket.department_name)
+            .limit(1);
+          deptId = deptRows?.[0]?.id;
+        }
 
-        await supabase.from('tickets').insert([{
+        // Fallback to first department in Supabase if still not resolved
+        if (!deptId || deptId.startsWith('dep-')) {
+          const { data: anyDept } = await supabase.from('departments').select('id').limit(1);
+          deptId = anyDept?.[0]?.id;
+        }
+
+        // Resolve valid category UUID for this department
+        let catId: string | null = null;
+        if (deptId) {
+          const { data: catData } = await supabase
+            .from('complaint_categories')
+            .select('id')
+            .eq('department_id', deptId)
+            .limit(1);
+          catId = catData?.[0]?.id || null;
+        }
+
+        if (!catId) {
+          const { data: anyCat } = await supabase.from('complaint_categories').select('id').limit(1);
+          catId = anyCat?.[0]?.id || null;
+        }
+
+        const { data: insertedTicket, error } = await supabase.from('tickets').insert([{
           ticket_number: newTicket.ticket_number,
           citizen_name: newTicket.citizen_name,
           citizen_phone: newTicket.citizen_phone,
           ward_number: newTicket.ward_number,
           address: newTicket.address,
           landmark: newTicket.landmark || '',
-          department_id: dept.id,
+          department_id: deptId,
           category_id: catId,
           problem_description: newTicket.problem_description,
           status: newTicket.status,
-          forwarding_option: newTicket.forwarding_option,
+          forwarding_option: newTicket.forwarding_option || 'COUNCILLOR_AND_OFFICER',
           sla_hours: newTicket.sla_hours,
           sla_deadline: new Date(Date.now() + newTicket.sla_hours * 3600000).toISOString()
-        }]);
+        }]).select('id, ticket_number').single();
+
+        if (error) {
+          console.error("Supabase ticket insert error:", error);
+        } else if (insertedTicket?.id) {
+          console.log("Ticket successfully inserted into Supabase:", newTicket.ticket_number);
+
+          // Log initial entry to ticket_history
+          await supabase.from('ticket_history').insert([{
+            ticket_id: insertedTicket.id,
+            previous_status: null,
+            new_status: 'REGISTERED',
+            action_type: 'TICKET_REGISTERED',
+            notes: 'Official municipal complaint ticket registered by Portal Manager'
+          }]);
+        }
       } catch (err) {
-        console.warn("Supabase ticket insert:", err);
+        console.warn("Supabase ticket insert exception:", err);
       }
     }
   };
