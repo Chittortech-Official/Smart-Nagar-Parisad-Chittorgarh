@@ -67,7 +67,7 @@ export interface IntakeComplaint {
 
 export interface Ticket {
   id: string;
-  ticket_number: string; // e.g. SNP-2026-0842
+  ticket_number: string; // e.g. CGR-0001
   citizen_name: string;
   citizen_phone: string;
   ward_number: number;

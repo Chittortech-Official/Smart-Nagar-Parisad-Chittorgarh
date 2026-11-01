@@ -1,14 +1,14 @@
 import { useState, useEffect } from 'react';
 import type { Ward, Department, ForwardingOption } from '../types';
-import { 
-  X, 
-  Phone, 
-  Ticket as TicketIcon, 
-  Send, 
-  Clock, 
-  UserCheck, 
-  ShieldCheck, 
-  MapPin, 
+import {
+  X,
+  Phone,
+  Ticket as TicketIcon,
+  Send,
+  Clock,
+  UserCheck,
+  ShieldCheck,
+  MapPin,
   Building2,
   MessageSquare,
   BellOff,
@@ -21,6 +21,7 @@ export type ComplaintDecision = 'ACCEPT' | 'REJECT';
 interface NewComplaintModalProps {
   wards: Ward[];
   departments: Department[];
+  nextTicketNumber?: string;
   defaultDecision?: ComplaintDecision;
   onClose: () => void;
   onSubmit: (data: {
@@ -44,6 +45,7 @@ interface NewComplaintModalProps {
 export const NewComplaintModal = ({
   wards,
   departments,
+  nextTicketNumber,
   defaultDecision = 'ACCEPT',
   onClose,
   onSubmit
@@ -179,7 +181,7 @@ export const NewComplaintModal = ({
   return (
     <div className="fixed inset-0 z-50 flex items-center justify-center p-4 md:p-6 bg-slate-950/75 backdrop-blur-sm animate-in fade-in duration-150">
       <div className="relative w-[96%] max-w-5xl h-[92vh] max-h-[880px] bg-white rounded-2xl shadow-2xl border border-slate-200 overflow-hidden flex flex-col">
-        
+
         {/* Header - Spacious & Prominent */}
         <div className="flex items-center justify-between px-7 py-4.5 bg-slate-900 text-white shrink-0 border-b border-slate-800">
           <div className="flex items-center gap-3.5">
@@ -187,15 +189,19 @@ export const NewComplaintModal = ({
               <TicketIcon className="w-6 h-6" />
             </div>
             <div>
-              <div className="flex items-center gap-2.5">
+              <div className="flex items-center gap-2.5 flex-wrap">
                 <h3 className="font-bold text-lg leading-tight text-white tracking-tight">
                   Citizen Complaint Registration &amp; Decision
                 </h3>
-                <span className={`px-2.5 py-0.5 rounded-full text-[11px] font-semibold border ${
-                  decision === 'ACCEPT' 
-                    ? 'bg-emerald-500/20 text-emerald-300 border-emerald-400/30' 
+                {decision === 'ACCEPT' && nextTicketNumber && (
+                  <span className="px-2.5 py-0.5 rounded-full text-[11px] font-mono font-bold bg-blue-500/25 text-blue-200 border border-blue-400/40 shadow-xs">
+                    Assigned Ticket: {nextTicketNumber}
+                  </span>
+                )}
+                <span className={`px-2.5 py-0.5 rounded-full text-[11px] font-semibold border ${decision === 'ACCEPT'
+                    ? 'bg-emerald-500/20 text-emerald-300 border-emerald-400/30'
                     : 'bg-rose-500/20 text-rose-300 border-rose-400/30'
-                }`}>
+                  }`}>
                   {decision === 'ACCEPT' ? 'Decision: Accept Complaint' : 'Decision: Reject Complaint'}
                 </span>
               </div>
@@ -204,7 +210,7 @@ export const NewComplaintModal = ({
               </p>
             </div>
           </div>
-          <button 
+          <button
             onClick={onClose}
             type="button"
             className="p-2 rounded-xl text-slate-400 hover:text-white hover:bg-slate-800 transition-colors cursor-pointer"
@@ -216,24 +222,23 @@ export const NewComplaintModal = ({
 
         {/* Form Body - Two Spacious Columns */}
         <form onSubmit={handleSubmit} className="flex-1 overflow-y-auto p-7 text-xs bg-slate-50/40">
-          
+
           {/* Decision Selector: Accept vs Reject (2 Options Only) */}
           <div className="mb-5 p-4 bg-white rounded-xl border border-slate-200 shadow-2xs">
             <span className="font-bold text-slate-900 text-xs block mb-2.5">
               Select Decision (निर्णय चुनें):
             </span>
             <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
-              <label 
-                className={`p-3.5 rounded-xl border-2 cursor-pointer transition-all flex items-start gap-3 ${
-                  decision === 'ACCEPT' 
-                    ? 'bg-emerald-50/70 border-emerald-500 shadow-xs ring-2 ring-emerald-500/20' 
+              <label
+                className={`p-3.5 rounded-xl border-2 cursor-pointer transition-all flex items-start gap-3 ${decision === 'ACCEPT'
+                    ? 'bg-emerald-50/70 border-emerald-500 shadow-xs ring-2 ring-emerald-500/20'
                     : 'bg-slate-50/60 border-slate-200 hover:bg-slate-100/60'
-                }`}
+                  }`}
               >
-                <input 
-                  type="radio" 
-                  name="decision" 
-                  checked={decision === 'ACCEPT'} 
+                <input
+                  type="radio"
+                  name="decision"
+                  checked={decision === 'ACCEPT'}
                   onChange={() => setDecision('ACCEPT')}
                   className="mt-1 text-emerald-600 focus:ring-emerald-500 h-4 w-4"
                 />
@@ -248,17 +253,16 @@ export const NewComplaintModal = ({
                 </div>
               </label>
 
-              <label 
-                className={`p-3.5 rounded-xl border-2 cursor-pointer transition-all flex items-start gap-3 ${
-                  decision === 'REJECT' 
-                    ? 'bg-rose-50/70 border-rose-500 shadow-xs ring-2 ring-rose-500/20' 
+              <label
+                className={`p-3.5 rounded-xl border-2 cursor-pointer transition-all flex items-start gap-3 ${decision === 'REJECT'
+                    ? 'bg-rose-50/70 border-rose-500 shadow-xs ring-2 ring-rose-500/20'
                     : 'bg-slate-50/60 border-slate-200 hover:bg-slate-100/60'
-                }`}
+                  }`}
               >
-                <input 
-                  type="radio" 
-                  name="decision" 
-                  checked={decision === 'REJECT'} 
+                <input
+                  type="radio"
+                  name="decision"
+                  checked={decision === 'REJECT'}
                   onChange={() => setDecision('REJECT')}
                   className="mt-1 text-rose-600 focus:ring-rose-500 h-4 w-4"
                 />
@@ -332,7 +336,7 @@ export const NewComplaintModal = ({
 
           {/* Main 2-Column Grid */}
           <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
-            
+
             {/* LEFT COLUMN: Citizen & Location Details */}
             <div className="space-y-4.5 bg-white p-5 rounded-xl border border-slate-200 shadow-2xs">
               <div className="flex items-center gap-2 pb-2.5 border-b border-slate-100">
@@ -610,11 +614,10 @@ export const NewComplaintModal = ({
                           key={opt.val}
                           type="button"
                           onClick={() => setSlaHours(opt.val)}
-                          className={`px-2.5 py-1 rounded-md text-[11px] font-bold border transition-all cursor-pointer ${
-                            slaHours === opt.val
+                          className={`px-2.5 py-1 rounded-md text-[11px] font-bold border transition-all cursor-pointer ${slaHours === opt.val
                               ? opt.val < 1 ? 'bg-rose-600 text-white border-rose-600 shadow-xs' : 'bg-amber-500 text-white border-amber-500 shadow-xs'
                               : opt.val < 1 ? 'bg-rose-50 text-rose-700 border-rose-200 hover:bg-rose-100' : 'bg-white text-slate-600 border-slate-200 hover:bg-slate-100'
-                          }`}
+                            }`}
                         >
                           {opt.label}
                         </button>
@@ -661,11 +664,10 @@ export const NewComplaintModal = ({
                         key={cat}
                         type="button"
                         onClick={() => setCategoryName(cat)}
-                        className={`text-[10px] px-2 py-0.5 rounded-md border transition-colors cursor-pointer ${
-                          categoryName === cat 
-                            ? 'bg-rose-50 border-rose-300 text-rose-700 font-semibold' 
+                        className={`text-[10px] px-2 py-0.5 rounded-md border transition-colors cursor-pointer ${categoryName === cat
+                            ? 'bg-rose-50 border-rose-300 text-rose-700 font-semibold'
                             : 'bg-slate-50 border-slate-200 text-slate-600 hover:bg-slate-100'
-                        }`}
+                          }`}
                       >
                         {cat}
                       </button>
@@ -707,11 +709,10 @@ export const NewComplaintModal = ({
                     <button
                       type="button"
                       onClick={() => setNotifyCitizenOnReject(true)}
-                      className={`p-3 rounded-xl border text-left transition-all cursor-pointer flex items-start gap-2.5 ${
-                        notifyCitizenOnReject 
-                          ? 'bg-emerald-50 border-emerald-500 ring-2 ring-emerald-500/20 shadow-xs' 
+                      className={`p-3 rounded-xl border text-left transition-all cursor-pointer flex items-start gap-2.5 ${notifyCitizenOnReject
+                          ? 'bg-emerald-50 border-emerald-500 ring-2 ring-emerald-500/20 shadow-xs'
                           : 'bg-white border-slate-200 hover:bg-slate-100/60'
-                      }`}
+                        }`}
                     >
                       <CheckCircle2 className={`w-4 h-4 shrink-0 mt-0.5 ${notifyCitizenOnReject ? 'text-emerald-600' : 'text-slate-400'}`} />
                       <div>
@@ -728,11 +729,10 @@ export const NewComplaintModal = ({
                     <button
                       type="button"
                       onClick={() => setNotifyCitizenOnReject(false)}
-                      className={`p-3 rounded-xl border text-left transition-all cursor-pointer flex items-start gap-2.5 ${
-                        !notifyCitizenOnReject 
-                          ? 'bg-slate-100 border-slate-400 ring-2 ring-slate-400/20 shadow-xs' 
+                      className={`p-3 rounded-xl border text-left transition-all cursor-pointer flex items-start gap-2.5 ${!notifyCitizenOnReject
+                          ? 'bg-slate-100 border-slate-400 ring-2 ring-slate-400/20 shadow-xs'
                           : 'bg-white border-slate-200 hover:bg-slate-100/60'
-                      }`}
+                        }`}
                     >
                       <BellOff className={`w-4 h-4 shrink-0 mt-0.5 ${!notifyCitizenOnReject ? 'text-slate-800' : 'text-slate-400'}`} />
                       <div>
@@ -755,8 +755,8 @@ export const NewComplaintModal = ({
             <div className="text-[11px] text-slate-500 flex items-center gap-2">
               <span className={`inline-block w-2 h-2 rounded-full ${decision === 'ACCEPT' ? 'bg-emerald-500' : 'bg-rose-500'} animate-pulse`} />
               <span>
-                {decision === 'ACCEPT' 
-                  ? 'Official municipal complaint ticket will be generated & dispatched directly' 
+                {decision === 'ACCEPT'
+                  ? 'Official municipal complaint ticket will be generated & dispatched directly'
                   : `Complaint rejected & logged into audit trail • ${notifyCitizenOnReject ? 'WhatsApp receipt will be sent to citizen' : 'Silent rejection (Citizen will not be notified)'}`}
               </span>
             </div>
@@ -771,9 +771,8 @@ export const NewComplaintModal = ({
               </button>
               <button
                 type="submit"
-                className={`px-6 py-2.5 rounded-xl text-white font-bold flex items-center gap-2 shadow-md hover:shadow-lg transition-all cursor-pointer ${
-                  decision === 'ACCEPT' ? 'bg-emerald-600 hover:bg-emerald-700' : 'bg-rose-600 hover:bg-rose-700'
-                }`}
+                className={`px-6 py-2.5 rounded-xl text-white font-bold flex items-center gap-2 shadow-md hover:shadow-lg transition-all cursor-pointer ${decision === 'ACCEPT' ? 'bg-emerald-600 hover:bg-emerald-700' : 'bg-rose-600 hover:bg-rose-700'
+                  }`}
               >
                 <TicketIcon className="w-4 h-4" />
                 <span className="text-sm">
@@ -787,7 +786,7 @@ export const NewComplaintModal = ({
         {/* Custom High-Quality Portal Notification Dialog (No browser alert) */}
         {validationAlert && (
           <div className="fixed inset-0 z-60 flex items-center justify-center p-4 bg-slate-950/70 backdrop-blur-sm animate-in fade-in duration-150">
-            <div 
+            <div
               className="relative w-full max-w-md bg-white rounded-3xl shadow-2xl border border-amber-300 p-6 md:p-7 text-center space-y-4 animate-in zoom-in-95 duration-150 select-none"
               onClick={(e) => e.stopPropagation()}
             >

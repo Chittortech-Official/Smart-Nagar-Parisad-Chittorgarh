@@ -82,7 +82,7 @@ CREATE TABLE IF NOT EXISTS complaint_intakes (
 -- 6. OFFICIAL COMPLAINT TICKETS (Generated only upon acceptance)
 CREATE TABLE IF NOT EXISTS tickets (
     id UUID PRIMARY KEY DEFAULT uuid_generate_v4(),
-    ticket_number VARCHAR(50) NOT NULL UNIQUE, -- e.g. SNP-2026-0842
+    ticket_number VARCHAR(50) NOT NULL UNIQUE, -- e.g. CGR-0001
     intake_id UUID REFERENCES complaint_intakes(id),
     citizen_name VARCHAR(100) NOT NULL,
     citizen_phone VARCHAR(20) NOT NULL,

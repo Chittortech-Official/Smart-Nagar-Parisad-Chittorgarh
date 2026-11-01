@@ -22,32 +22,51 @@
   background: #94a3b8;
 }
 
-/* Print Optimization Styles */
+/* Print Optimization Styles - Pure text data, absolutely NO logos, NO sidebars, NO footers */
 @media print {
   @page {
     size: landscape;
-    margin: 10mm 8mm;
+    margin: 8mm 6mm;
   }
 
-  body {
-    background: #ffffff !important;
-    color: #0f172a !important;
-    -webkit-print-color-adjust: exact !important;
-    print-color-adjust: exact !important;
-    font-size: 10.5pt !important;
-  }
-
-  /* Hide navigation, sidebars, header, modals, action triggers during printing */
+  /* Force hide sidebar, header, footer, navigation, and all screen-only UI */
   aside,
   header,
   footer,
-  .no-print,
+  nav,
   .print\:hidden {
     display: none !important;
+    visibility: hidden !important;
+    height: 0 !important;
+    max-height: 0 !important;
+    overflow: hidden !important;
   }
 
-  .print\:block {
-    display: block !important;
+  html,
+  body,
+  #root {
+    background: #ffffff !important;
+    color: #000000 !important;
+    margin: 0 !important;
+    padding: 0 !important;
+    height: auto !important;
+    min-height: 0 !important;
+    max-height: none !important;
+    overflow: visible !important;
+    font-size: 9pt !important;
+  }
+
+  /* Unconstrain wrappers so print flows naturally */
+  .h-screen,
+  .min-w-\[1024px\],
+  .overflow-hidden,
+  .overflow-y-auto,
+  .overflow-x-auto {
+    height: auto !important;
+    min-height: 0 !important;
+    max-height: none !important;
+    overflow: visible !important;
+    min-width: 0 !important;
   }
 
   main {
@@ -55,23 +74,49 @@
     padding: 0 !important;
     width: 100% !important;
     max-width: 100% !important;
+    height: auto !important;
+    overflow: visible !important;
+    display: block !important;
   }
 
+  /* Clean table styling - 100% pure text data */
   table {
     width: 100% !important;
     border-collapse: collapse !important;
+    page-break-inside: auto !important;
+    margin-top: 6px !important;
   }
 
   thead {
     display: table-header-group !important;
   }
 
+  tbody {
+    display: table-row-group !important;
+  }
+
   tr {
     page-break-inside: avoid !important;
+    page-break-after: auto !important;
   }
 
   th, td {
-    border: 1px solid #475569 !important;
+    border: 1px solid #334155 !important;
+    padding: 4px 6px !important;
+    color: #000000 !important;
+    font-size: 8.5pt !important;
+    line-height: 1.25 !important;
+  }
+
+  th {
+    background-color: #f1f5f9 !important;
+    font-weight: 700 !important;
+  }
+
+  /* Hide any icons or decorative graphics in table cells */
+  td svg,
+  th svg {
+    display: none !important;
   }
 }
 

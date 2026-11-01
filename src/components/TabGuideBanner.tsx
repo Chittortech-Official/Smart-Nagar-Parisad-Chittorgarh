@@ -98,7 +98,7 @@ export function TabGuideBanner({ tabKey }: TabGuideBannerProps) {
   const meta = getBannerMeta();
 
   return (
-    <div className="bg-gradient-to-r from-blue-50/95 via-indigo-50/70 to-white rounded-2xl border-2 border-blue-300 shadow-sm overflow-hidden select-none mb-6 transition-all">
+    <div className="bg-gradient-to-r from-blue-50/95 via-indigo-50/70 to-white rounded-2xl border-2 border-blue-300 shadow-sm overflow-hidden select-none mb-6 transition-all print:hidden">
       {/* Header Bar */}
       <div className={`px-5 py-3.5 flex flex-wrap items-center justify-between gap-3 bg-white/95 transition-all ${
         isOpen ? 'border-b-2 border-blue-200' : ''
@@ -668,7 +668,7 @@ export function TabGuideBanner({ tabKey }: TabGuideBannerProps) {
                         </div>
                       </div>
                       <div className="px-3 py-1 bg-blue-100 border border-blue-300 rounded-lg text-blue-900 font-bold text-xs">
-                        Intake ➔ Verification ➔ SNP-2026-XXXX Ticket
+                        Intake ➔ Verification ➔ CGR-XXXX Ticket
                       </div>
                     </div>
 
@@ -763,7 +763,7 @@ export function TabGuideBanner({ tabKey }: TabGuideBannerProps) {
                                 {lang === 'hi' ? '✅ हाँ: स्वीकृत (Accept)' : '✅ YES: Accept & Register'}
                               </span>
                               <span className="font-bold text-xs text-emerald-950">
-                                {lang === 'hi' ? 'आधिकारिक टिकट जारी (SNP-2026-XXXX)' : 'Issue Ticket (SNP-2026-XXXX)'}
+                                {lang === 'hi' ? 'आधिकारिक टिकट जारी (CGR-XXXX)' : 'Issue Ticket (CGR-XXXX)'}
                               </span>
                             </div>
                             <p className="text-[11px] text-emerald-900 leading-snug">
@@ -857,7 +857,7 @@ export function TabGuideBanner({ tabKey }: TabGuideBannerProps) {
                           {lang === 'hi' ? 'सत्यापन एवं टिकट जारी' : 'Verify & Generate Ticket'}
                         </p>
                         <p className="text-[10px] text-blue-800 leading-snug">
-                          {lang === 'hi' ? 'पोर्टल मैनेजर द्वारा स्वीकृति ➔ SNP-2026-XXXX टिकट' : 'Acceptance creates official ticket'}
+                          {lang === 'hi' ? 'पोर्टल मैनेजर द्वारा स्वीकृति ➔ CGR-XXXX टिकट' : 'Acceptance creates official ticket'}
                         </p>
                       </div>
 
@@ -1028,7 +1028,7 @@ export function TabGuideBanner({ tabKey }: TabGuideBannerProps) {
                           {lang === 'hi' ? 'संदेश 1' : 'Message 1'}
                         </span>
                         <p className="font-bold text-blue-950">{lang === 'hi' ? 'पंजीकरण रसीद' : 'Registration Alert'}</p>
-                        <p className="text-[11px] text-slate-600">{lang === 'hi' ? 'नागरिक को टिकट नंबर (SNP-2026-XXXX)' : 'Ticket ID & SLA sent to citizen'}</p>
+                        <p className="text-[11px] text-slate-600">{lang === 'hi' ? 'नागरिक को टिकट नंबर (CGR-XXXX)' : 'Ticket ID & SLA sent to citizen'}</p>
                       </div>
                       <div className="p-3 bg-indigo-50 border border-indigo-300 rounded-xl text-center space-y-1">
                         <span className="px-2 py-0.5 bg-indigo-600 text-white rounded text-[10px] font-bold">

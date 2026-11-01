@@ -19,6 +19,7 @@ import type { StatusModalConfig, WhatsAppAction } from './StatusModal';
 import { TabGuideBanner } from './TabGuideBanner';
 import { AdminFooter } from './AdminFooter';
 import { HelpSupportView } from './HelpSupportView';
+import { generateNextTicketNumber, formatDeadlineIST } from '../utils/ticketGenerator';
 import { 
   LayoutDashboard, 
   Inbox, 
@@ -48,7 +49,11 @@ import {
   Sparkles,
   Headphones,
   Download,
-  Printer
+  Printer,
+  XCircle,
+  Menu,
+  X,
+  RotateCcw
 } from 'lucide-react';
 
 interface DashboardViewProps {
@@ -70,6 +75,69 @@ interface DashboardViewProps {
   onAddDepartment?: (dept: Department) => Promise<void> | void;
 }
 
+const TAB_HEADER_METADATA: Record<string, { title: string; hindi: string; icon: any; bg: string }> = {
+  DASHBOARD: {
+    title: 'Dashboard Overview',
+    hindi: 'डैशबोर्ड अवलोकन',
+    icon: LayoutDashboard,
+    bg: 'bg-white/95 border-sky-300 text-blue-600 shadow-2xs'
+  },
+  INTAKE: {
+    title: 'Intake Queue',
+    hindi: 'आवक नागरिक शिकायतें',
+    icon: Inbox,
+    bg: 'bg-white/95 border-amber-300 text-amber-600 shadow-2xs'
+  },
+  TICKETS: {
+    title: 'All Complaints',
+    hindi: 'शिकायत निवारण रजिस्टर',
+    icon: TicketCheck,
+    bg: 'bg-white/95 border-blue-300 text-blue-600 shadow-2xs'
+  },
+  CLOSED: {
+    title: 'Closed Complaints',
+    hindi: 'प्रमाणित निस्तारित शिकायतें',
+    icon: CheckCircle2,
+    bg: 'bg-white/95 border-emerald-300 text-emerald-600 shadow-2xs'
+  },
+  REJECTED: {
+    title: 'Rejected Complaints',
+    hindi: 'अस्वीकृत शिकायत ऑडिट',
+    icon: XCircle,
+    bg: 'bg-white/95 border-rose-300 text-rose-600 shadow-2xs'
+  },
+  SLA: {
+    title: 'SLA & Overdue',
+    hindi: 'समय-सीमा उल्लंघन मॉनिटरिंग',
+    icon: ClockAlert,
+    bg: 'bg-white/95 border-rose-300 text-rose-600 shadow-2xs'
+  },
+  WARDS: {
+    title: 'Parshad List (All 60 Wards)',
+    hindi: 'वार्ड पार्षद निर्देशिका',
+    icon: MapPin,
+    bg: 'bg-white/95 border-sky-300 text-sky-600 shadow-2xs'
+  },
+  DEPARTMENTS: {
+    title: 'Municipal Departments',
+    hindi: 'विभागीय नोडल अधिकारी',
+    icon: Building2,
+    bg: 'bg-white/95 border-violet-300 text-violet-600 shadow-2xs'
+  },
+  SETTINGS: {
+    title: 'Settings & Office Hours',
+    hindi: 'पोर्टल सेटिंग्स',
+    icon: Settings,
+    bg: 'bg-white/95 border-slate-300 text-slate-700 shadow-2xs'
+  },
+  SUPPORT: {
+    title: 'Help & Developer Support',
+    hindi: 'सहायता एवं सपोर्ट',
+    icon: Headphones,
+    bg: 'bg-white/95 border-teal-300 text-teal-600 shadow-2xs'
+  }
+};
+
 export const DashboardView = ({
   userRole,
   userEmail,
@@ -89,7 +157,7 @@ export const DashboardView = ({
   onAddDepartment
 }: DashboardViewProps) => {
 
-  const [activeTab, setActiveTab] = useState<'DASHBOARD' | 'INTAKE' | 'TICKETS' | 'CLOSED' | 'SLA' | 'WARDS' | 'DEPARTMENTS' | 'SETTINGS' | 'SUPPORT'>('DASHBOARD');
+  const [activeTab, setActiveTab] = useState<'DASHBOARD' | 'INTAKE' | 'TICKETS' | 'CLOSED' | 'REJECTED' | 'SLA' | 'WARDS' | 'DEPARTMENTS' | 'SETTINGS' | 'SUPPORT'>('DASHBOARD');
   
   // Advanced Filters State
   const [filtersOpen, setFiltersOpen] = useState(true);
@@ -107,6 +175,22 @@ export const DashboardView = ({
   useEffect(() => {
     setCurrentPage(1);
   }, [selectedWard, selectedDepartment, selectedStatus, searchQuery, activeTab]);
+
+  // Global keyboard shortcut to focus compact search bar with "/" or "Ctrl+K"
+  useEffect(() => {
+    const handleKeyDown = (e: KeyboardEvent) => {
+      if (
+        (e.key === '/' || ((e.metaKey || e.ctrlKey) && e.key.toLowerCase() === 'k')) &&
+        document.activeElement?.tagName !== 'INPUT' &&
+        document.activeElement?.tagName !== 'TEXTAREA'
+      ) {
+        e.preventDefault();
+        document.getElementById('global-search-input')?.focus();
+      }
+    };
+    window.addEventListener('keydown', handleKeyDown);
+    return () => window.removeEventListener('keydown', handleKeyDown);
+  }, []);
 
   // Modals state
   const [selectedTicketForClosure, setSelectedTicketForClosure] = useState<Ticket | null>(null);
@@ -129,6 +213,15 @@ export const DashboardView = ({
   const [editingDepartment, setEditingDepartment] = useState<Department | null>(null);
   const [parshadSearch, setParshadSearch] = useState('');
   const [departmentSearch, setDepartmentSearch] = useState('');
+
+  // Mobile sidebar drawer state
+  const [mobileMenuOpen, setMobileMenuOpen] = useState(false);
+
+  // Dedicated Filter States for Rejected Complaints Tab
+  const [rejectedSearch, setRejectedSearch] = useState('');
+  const [rejectedWard, setRejectedWard] = useState<string>('ALL');
+  const [rejectedChannel, setRejectedChannel] = useState<string>('ALL');
+  const [rejectedCategory, setRejectedCategory] = useState<string>('ALL');
 
   const handleSaveWard = async (updatedWard: Ward) => {
     await onUpdateWard?.(updatedWard);
@@ -252,13 +345,31 @@ export const DashboardView = ({
   }, [activeTab, filteredTickets]);
 
   // Pagination calculation
+  const [isPrinting, setIsPrinting] = useState(false);
+
+  // Print trigger handler: resets scroll position to 0 and disables pagination temporarily so 100% of rows print cleanly across all pages
+  const handleTriggerPrint = () => {
+    setIsPrinting(true);
+    window.scrollTo(0, 0);
+    const scrollContainers = document.querySelectorAll('.overflow-y-auto, .overflow-x-auto, main');
+    scrollContainers.forEach(el => {
+      el.scrollTop = 0;
+      el.scrollLeft = 0;
+    });
+
+    setTimeout(() => {
+      window.print();
+      setIsPrinting(false);
+    }, 150);
+  };
+
   const totalItems = activeTicketsList.length;
   const totalPages = pageSize >= 99999 ? 1 : Math.max(1, Math.ceil(totalItems / pageSize));
   const paginatedTickets = useMemo(() => {
-    if (pageSize >= 99999) return activeTicketsList;
+    if (isPrinting || pageSize >= 99999) return activeTicketsList;
     const startIndex = (currentPage - 1) * pageSize;
     return activeTicketsList.slice(startIndex, startIndex + pageSize);
-  }, [activeTicketsList, currentPage, pageSize]);
+  }, [activeTicketsList, currentPage, pageSize, isPrinting]);
 
   // Derived filtered intakes (All, Pending Review, Rejected, Accepted)
   const filteredIntakes = useMemo(() => {
@@ -277,6 +388,104 @@ export const DashboardView = ({
     }
     return result;
   }, [intakes, intakeFilterStatus, searchQuery]);
+
+  // All Rejected Complaints (from both intake and tickets audit log)
+  const allRejectedComplaints = useMemo(() => {
+    const list: Array<{
+      id: string;
+      channel: string;
+      citizen_name: string;
+      citizen_phone: string;
+      ward_number: number;
+      address: string;
+      landmark?: string;
+      category_name: string;
+      problem_description: string;
+      rejection_reason: string;
+      received_at: string;
+    }> = [];
+
+    intakes.filter(i => i.status === 'REJECTED').forEach(i => {
+      list.push({
+        id: i.id,
+        channel: i.intake_channel || 'Citizen Intake',
+        citizen_name: i.citizen_name,
+        citizen_phone: i.citizen_phone,
+        ward_number: i.ward_number,
+        address: i.address,
+        landmark: i.landmark,
+        category_name: i.category_name,
+        problem_description: i.problem_description,
+        rejection_reason: i.rejection_reason || 'Rejected by Portal Manager',
+        received_at: i.received_at || 'Recently'
+      });
+    });
+
+    tickets.filter(t => t.status === 'REJECTED').forEach(t => {
+      list.push({
+        id: t.id,
+        channel: 'Official Ticket',
+        citizen_name: t.citizen_name,
+        citizen_phone: t.citizen_phone,
+        ward_number: t.ward_number,
+        address: t.address,
+        landmark: t.landmark,
+        category_name: t.category_name,
+        problem_description: t.problem_description,
+        rejection_reason: t.authority_notes || 'Rejected in Review',
+        received_at: t.registration_time || 'Recently'
+      });
+    });
+
+    return list;
+  }, [intakes, tickets]);
+
+  // Multi-criteria filter for Rejected Complaints Tab (Ward, Source Channel, Category & Search)
+  const filteredRejectedComplaints = useMemo(() => {
+    return allRejectedComplaints.filter((item) => {
+      if (rejectedWard !== 'ALL' && item.ward_number.toString() !== rejectedWard) {
+        return false;
+      }
+      if (rejectedChannel !== 'ALL') {
+        const ch = item.channel.toLowerCase();
+        if (rejectedChannel === 'WHATSAPP' && !ch.includes('whatsapp')) return false;
+        if (rejectedChannel === 'INTAKE' && !ch.includes('intake') && !ch.includes('citizen') && !ch.includes('helpline')) return false;
+        if (rejectedChannel === 'TICKET' && !ch.includes('ticket')) return false;
+      }
+      if (rejectedCategory !== 'ALL' && item.category_name !== rejectedCategory) {
+        return false;
+      }
+
+      const q = (rejectedSearch || searchQuery).trim().toLowerCase();
+      if (q) {
+        const textMatch =
+          item.citizen_name.toLowerCase().includes(q) ||
+          item.citizen_phone.includes(q) ||
+          item.address.toLowerCase().includes(q) ||
+          (item.landmark && item.landmark.toLowerCase().includes(q)) ||
+          item.problem_description.toLowerCase().includes(q) ||
+          item.rejection_reason.toLowerCase().includes(q) ||
+          item.category_name.toLowerCase().includes(q) ||
+          item.channel.toLowerCase().includes(q) ||
+          `ward ${item.ward_number}`.includes(q) ||
+          item.ward_number.toString() === q;
+        if (!textMatch) return false;
+      }
+      return true;
+    });
+  }, [allRejectedComplaints, rejectedWard, rejectedChannel, rejectedCategory, rejectedSearch, searchQuery]);
+
+  // Unique categories for the Rejected Complaints filter dropdown
+  const rejectedCategories = useMemo(() => {
+    const set = new Set<string>();
+    allRejectedComplaints.forEach((item) => {
+      if (item.category_name) set.add(item.category_name);
+    });
+    return Array.from(set).sort();
+  }, [allRejectedComplaints]);
+
+  // Next upcoming ticket number calculated from live central database sequence
+  const nextTicketNumber = useMemo(() => generateNextTicketNumber(tickets), [tickets]);
 
   // Real-time KPI Counts (from Master Prompt Section 9)
   const kpis = useMemo(() => {
@@ -437,6 +646,39 @@ export const DashboardView = ({
     );
   };
 
+  const handleExportRejectedCsv = () => {
+    const dateStr = new Date().toISOString().split('T')[0];
+    const headers = [
+      'Channel (माध्यम)',
+      'Citizen Name (नागरिक का नाम)',
+      'Mobile Number (मोबाइल नंबर)',
+      'Ward Number (वार्ड संख्या)',
+      'Locality & Address (स्थान एवं पता)',
+      'Landmark (पहचान)',
+      'Problem Category (समस्या श्रेणी)',
+      'Problem Description (समस्या विवरण)',
+      'Rejection Reason (अस्वीकृति का कारण)',
+      'Logged Time (दर्ज समय)',
+      'Status (स्थिति)'
+    ];
+
+    const rows = filteredRejectedComplaints.map(item => [
+      item.channel,
+      item.citizen_name,
+      item.citizen_phone,
+      `Ward ${item.ward_number}`,
+      item.address,
+      item.landmark || '',
+      item.category_name,
+      item.problem_description,
+      item.rejection_reason,
+      item.received_at,
+      'REJECTED'
+    ]);
+
+    downloadCsv(`SNP_Chittorgarh_Rejected_Complaints_${dateStr}.csv`, headers, rows);
+  };
+
   // Handlers for Two Step Closure
   const handleAuthorityConfirm = (ticketId: string, notes: string) => {
     const target = tickets.find(t => t.id === ticketId);
@@ -528,8 +770,7 @@ export const DashboardView = ({
     if (!intake) return;
 
     const dept = departments.find(d => d.name === intake.department_name) || departments[0];
-    const nextNum = 840 + tickets.length + 1;
-    const ticketNum = `SNP-2026-0${nextNum}`;
+    const ticketNum = generateNextTicketNumber(tickets);
     const deadlineHours = slaHours;
     let deadlineMs = Math.round(deadlineHours * 3600 * 1000);
     if (deadlineHours < 0.01) {
@@ -540,10 +781,12 @@ export const DashboardView = ({
     const deadlineDate = new Date(Date.now() + deadlineMs);
 
     const formatDeadlineDisplay = (hours: number, date: Date) => {
-      const timeStr = date.toLocaleTimeString('en-US', { hour: '2-digit', minute: '2-digit', second: '2-digit' });
+      const timeStr = date.toLocaleTimeString('en-US', { hour: '2-digit', minute: '2-digit', second: '2-digit', hour12: true, timeZone: 'Asia/Kolkata' });
       if (hours < 0.01) return `30s Target (${timeStr})`;
       if (hours < 0.05) return `1m Target (${timeStr})`;
-      return date.toLocaleString('en-IN', { hour: '2-digit', minute: '2-digit', day: '2-digit', month: '2-digit' });
+      const datePart = date.toLocaleDateString('en-IN', { day: '2-digit', month: '2-digit', timeZone: 'Asia/Kolkata' });
+      const timePart = date.toLocaleTimeString('en-US', { hour: '2-digit', minute: '2-digit', hour12: true, timeZone: 'Asia/Kolkata' });
+      return `${datePart}, ${timePart}`;
     };
 
     const formatSlaLabel = (hours: number) => {
@@ -753,21 +996,39 @@ export const DashboardView = ({
   };
 
   return (
-    <div className="flex h-screen bg-slate-100 font-sans overflow-hidden min-w-[1024px]">
-      {/* 1. LEFT SIDEBAR NAVIGATION (Compact & Optimized for Maximum Content Area) */}
-      <aside className="w-56 bg-slate-900 border-r border-slate-800 flex flex-col justify-between shrink-0 select-none">
+    <div className="flex h-screen bg-slate-100 font-sans overflow-hidden w-full print:h-auto print:overflow-visible print:min-w-0 print:block">
+      {/* Mobile Drawer Backdrop */}
+      {mobileMenuOpen && (
+        <div 
+          onClick={() => setMobileMenuOpen(false)}
+          className="fixed inset-0 bg-slate-950/70 backdrop-blur-xs z-40 md:hidden print:hidden"
+        />
+      )}
+
+      {/* 1. LEFT SIDEBAR NAVIGATION (Responsive Drawer on Mobile, Fixed Sidebar on Desktop) */}
+      <aside className={`fixed inset-y-0 left-0 z-50 w-64 bg-slate-900 border-r border-slate-800 flex flex-col justify-between shrink-0 select-none transition-transform duration-200 ease-in-out md:static md:w-56 md:translate-x-0 ${
+        mobileMenuOpen ? 'translate-x-0' : '-translate-x-full md:translate-x-0'
+      } print:hidden`}>
         <div>
           {/* Sidebar Header Brand: Nagar Parishad Portal */}
-          <div className="p-3 border-b border-slate-800/80 bg-slate-950/40">
+          <div className="p-3 border-b border-slate-800/80 bg-slate-950/40 flex items-center justify-between">
             <NagarParishadLogo 
               size="sm" 
               theme="dark"
               hindiTitle="नगर परिषद पोर्टल"
               englishSubtitle="Nagar Parishad Portal"
             />
-            <div className="mt-1.5 text-[9px] uppercase font-mono tracking-wider text-slate-400 pl-0.5">
-              ADMIN PORTAL &bull; CHITTORGARH
-            </div>
+            <button
+              type="button"
+              onClick={() => setMobileMenuOpen(false)}
+              className="p-1 rounded-lg text-slate-400 hover:text-white md:hidden"
+              title="Close Menu"
+            >
+              <X className="w-4 h-4" />
+            </button>
+          </div>
+          <div className="px-3 pt-1 text-[9px] uppercase font-mono tracking-wider text-slate-400">
+            ADMIN PORTAL &bull; CHITTORGARH
           </div>
 
           {/* MAIN MENU */}
@@ -779,7 +1040,10 @@ export const DashboardView = ({
               <div className="mt-1 space-y-0.5">
                 <button
                   type="button"
-                  onClick={() => setActiveTab('DASHBOARD')}
+                  onClick={() => {
+                    setActiveTab('DASHBOARD');
+                    setMobileMenuOpen(false);
+                  }}
                   className={`w-full flex items-center gap-2.5 px-2.5 py-2 rounded-lg text-xs font-semibold transition-all ${
                     activeTab === 'DASHBOARD'
                       ? 'bg-blue-600 text-white shadow-md'
@@ -800,7 +1064,10 @@ export const DashboardView = ({
               <div className="mt-1 space-y-0.5">
                 <button
                   type="button"
-                  onClick={() => setActiveTab('INTAKE')}
+                  onClick={() => {
+                    setActiveTab('INTAKE');
+                    setMobileMenuOpen(false);
+                  }}
                   className={`w-full flex items-center justify-between px-2.5 py-2 rounded-lg text-xs font-semibold transition-all ${
                     activeTab === 'INTAKE'
                       ? 'bg-blue-600 text-white shadow-md'
@@ -823,6 +1090,7 @@ export const DashboardView = ({
                   onClick={() => {
                     setActiveTab('TICKETS');
                     setSelectedStatus('ALL');
+                    setMobileMenuOpen(false);
                   }}
                   className={`w-full flex items-center justify-between px-2.5 py-2 rounded-lg text-xs font-semibold transition-all ${
                     activeTab === 'TICKETS'
@@ -844,6 +1112,7 @@ export const DashboardView = ({
                   onClick={() => {
                     setActiveTab('CLOSED');
                     setSelectedStatus('CLOSED');
+                    setMobileMenuOpen(false);
                   }}
                   className={`w-full flex items-center justify-between px-2.5 py-2 rounded-lg text-xs font-semibold transition-all ${
                     activeTab === 'CLOSED'
@@ -862,7 +1131,33 @@ export const DashboardView = ({
 
                 <button
                   type="button"
-                  onClick={() => setActiveTab('SLA')}
+                  onClick={() => {
+                    setActiveTab('REJECTED');
+                    setMobileMenuOpen(false);
+                  }}
+                  className={`w-full flex items-center justify-between px-2.5 py-2 rounded-lg text-xs font-semibold transition-all ${
+                    activeTab === 'REJECTED'
+                      ? 'bg-rose-600 text-white shadow-md'
+                      : 'text-slate-400 hover:text-white hover:bg-slate-800'
+                  }`}
+                >
+                  <div className="flex items-center gap-2.5">
+                    <XCircle className="w-3.5 h-3.5 shrink-0 text-rose-400" />
+                    <span>Rejected Complaints</span>
+                  </div>
+                  {allRejectedComplaints.length > 0 && (
+                    <span className="px-1.5 py-0.5 rounded-full bg-rose-500/20 text-rose-300 font-mono text-[9px] font-bold">
+                      {allRejectedComplaints.length}
+                    </span>
+                  )}
+                </button>
+
+                <button
+                  type="button"
+                  onClick={() => {
+                    setActiveTab('SLA');
+                    setMobileMenuOpen(false);
+                  }}
                   className={`w-full flex items-center justify-between px-2.5 py-2 rounded-lg text-xs font-semibold transition-all ${
                     activeTab === 'SLA'
                       ? 'bg-blue-600 text-white shadow-md'
@@ -882,7 +1177,10 @@ export const DashboardView = ({
 
                 <button
                   type="button"
-                  onClick={() => setActiveTab('WARDS')}
+                  onClick={() => {
+                    setActiveTab('WARDS');
+                    setMobileMenuOpen(false);
+                  }}
                   className={`w-full flex items-center gap-2.5 px-2.5 py-2 rounded-lg text-xs font-semibold transition-all ${
                     activeTab === 'WARDS'
                       ? 'bg-blue-600 text-white shadow-md'
@@ -895,7 +1193,10 @@ export const DashboardView = ({
 
                 <button
                   type="button"
-                  onClick={() => setActiveTab('DEPARTMENTS')}
+                  onClick={() => {
+                    setActiveTab('DEPARTMENTS');
+                    setMobileMenuOpen(false);
+                  }}
                   className={`w-full flex items-center gap-2.5 px-2.5 py-2 rounded-lg text-xs font-semibold transition-all ${
                     activeTab === 'DEPARTMENTS'
                       ? 'bg-blue-600 text-white shadow-md'
@@ -908,7 +1209,10 @@ export const DashboardView = ({
 
                 <button
                   type="button"
-                  onClick={() => setActiveTab('SETTINGS')}
+                  onClick={() => {
+                    setActiveTab('SETTINGS');
+                    setMobileMenuOpen(false);
+                  }}
                   className={`w-full flex items-center gap-2.5 px-2.5 py-2 rounded-lg text-xs font-semibold transition-all ${
                     activeTab === 'SETTINGS'
                       ? 'bg-blue-600 text-white shadow-md'
@@ -921,7 +1225,10 @@ export const DashboardView = ({
 
                 <button
                   type="button"
-                  onClick={() => setActiveTab('SUPPORT')}
+                  onClick={() => {
+                    setActiveTab('SUPPORT');
+                    setMobileMenuOpen(false);
+                  }}
                   className={`w-full flex items-center gap-2.5 px-2.5 py-2 rounded-lg text-xs font-semibold transition-all ${
                     activeTab === 'SUPPORT'
                       ? 'bg-blue-600 text-white shadow-md'
@@ -987,43 +1294,77 @@ export const DashboardView = ({
       </aside>
 
       {/* 2. MAIN CONTENT AREA */}
-      <div className="flex-1 flex flex-col min-w-0 overflow-y-auto">
-        {/* Top Header Bar (Matches Reference Screenshot 2) */}
-        <header className="sticky top-0 z-30 bg-white border-b border-slate-200 px-6 py-3 flex items-center justify-between">
-          <div className="flex items-center gap-2">
-            <h2 className="text-lg font-bold text-slate-900">
-              {activeTab === 'WARDS' 
-                ? 'Parshad List' 
-                : activeTab === 'CLOSED'
-                ? 'Closed Complaints'
-                : activeTab === 'TICKETS'
-                ? 'All Complaints'
-                : activeTab === 'INTAKE'
-                ? 'Intake Queue'
-                : activeTab === 'SLA'
-                ? 'SLA & Overdue'
-                : activeTab === 'SUPPORT'
-                ? 'Help & Developer Support'
-                : activeTab.toLowerCase()}
-            </h2>
-            <span className="text-xs text-slate-400 font-normal">
-              &bull; Nagar Parishad Chittorgarh Live Portal
-            </span>
-          </div>
+      <div className="flex-1 flex flex-col min-w-0 overflow-y-auto print:overflow-visible print:h-auto print:block">
+        {/* Top Header Bar (Professional Municipal Header) */}
+        <header className="sticky top-0 z-30 bg-white border-b border-slate-200 px-3 sm:px-6 py-2.5 sm:py-3 flex items-center justify-between gap-2.5 print:hidden">
+          {(() => {
+            const meta = TAB_HEADER_METADATA[activeTab] || TAB_HEADER_METADATA.DASHBOARD;
+            const Icon = meta.icon;
+            return (
+              <div className="flex items-center gap-2.5 min-w-0">
+                <button
+                  type="button"
+                  onClick={() => setMobileMenuOpen(prev => !prev)}
+                  title="Toggle Menu"
+                  className="p-1.5 rounded-lg border border-slate-200 text-slate-700 hover:bg-slate-100 md:hidden transition-colors shrink-0"
+                >
+                  <Menu className="w-4 h-4" />
+                </button>
 
-          <div className="flex items-center gap-3">
-            {/* Universal Search Bar */}
-            <div className="relative w-64 lg:w-80">
-              <div className="absolute inset-y-0 left-0 pl-3 flex items-center pointer-events-none text-slate-400">
+                {/* Tab Icon Badge */}
+                <div className={`p-1.5 rounded-lg border shrink-0 ${meta.bg}`}>
+                  <Icon className="w-4 h-4" />
+                </div>
+
+                {/* Tab Title & Hindi Translation */}
+                <div className="flex items-center gap-1.5 sm:gap-2 min-w-0">
+                  <h2 className="text-base sm:text-lg font-black text-slate-900 tracking-tight whitespace-nowrap">
+                    {meta.title}
+                  </h2>
+                  <span className="px-2 py-0.5 rounded-md bg-slate-100 border border-slate-200 text-xs font-semibold text-slate-600 hidden md:inline-block whitespace-nowrap">
+                    {meta.hindi}
+                  </span>
+                </div>
+
+                {/* Live Portal Official Tag */}
+                <span className="px-2 py-0.5 rounded-md bg-slate-100 text-slate-600 font-medium text-[11px] border border-slate-200 hidden xl:inline-flex items-center gap-1.5 shrink-0 ml-1">
+                  <span className="w-1.5 h-1.5 rounded-full bg-emerald-500 animate-pulse" />
+                  <span>Nagar Parishad Chittorgarh Live Portal</span>
+                </span>
+              </div>
+            );
+          })()}
+
+          <div className="flex items-center gap-2 sm:gap-2.5 shrink-0">
+            {/* Universal Search Bar - Compact, Modern & Attractive Pill */}
+            <div className="relative group w-36 sm:w-44 md:w-52 focus-within:w-60 transition-all duration-200">
+              <div className="absolute inset-y-0 left-0 pl-2.5 flex items-center pointer-events-none text-slate-400 group-focus-within:text-blue-600 transition-colors">
                 <Search className="w-3.5 h-3.5" />
               </div>
               <input
+                id="global-search-input"
                 type="text"
                 value={searchQuery}
                 onChange={(e) => setSearchQuery(e.target.value)}
-                placeholder="Search ticket, citizen, ward, 'step 1', 'citizen pending'..."
-                className="w-full pl-9 pr-3 py-1.5 rounded-lg border border-slate-200 bg-slate-50 text-xs focus:bg-white focus:outline-none focus:ring-2 focus:ring-blue-600"
+                placeholder="Search CGR, citizen..."
+                className="w-full pl-8 pr-8 py-1.5 rounded-full border border-slate-200/90 bg-slate-100/90 hover:bg-slate-100 focus:bg-white text-xs text-slate-800 placeholder:text-slate-400 focus:outline-none focus:border-blue-500 focus:ring-2 focus:ring-blue-100 transition-all shadow-2xs font-medium"
               />
+              {searchQuery ? (
+                <button
+                  type="button"
+                  onClick={() => setSearchQuery('')}
+                  className="absolute inset-y-0 right-0 pr-2 flex items-center text-slate-400 hover:text-slate-600 cursor-pointer"
+                  title="Clear search"
+                >
+                  <X className="w-3.5 h-3.5" />
+                </button>
+              ) : (
+                <div className="absolute inset-y-0 right-0 pr-2.5 hidden sm:flex items-center pointer-events-none">
+                  <kbd className="px-1.5 py-0.5 text-[9px] font-mono font-bold text-slate-400 bg-white border border-slate-200 rounded shadow-2xs">
+                    /
+                  </kbd>
+                </div>
+              )}
             </div>
 
             {/* Quick action buttons */}
@@ -1039,7 +1380,7 @@ export const DashboardView = ({
                 });
               }}
               title="Refresh Data"
-              className="p-2 rounded-lg border border-slate-200 text-slate-600 hover:bg-slate-50"
+              className="p-2 rounded-xl border border-slate-200 text-slate-600 hover:text-blue-600 hover:bg-slate-50 transition-colors cursor-pointer shrink-0"
             >
               <RefreshCw className="w-4 h-4" />
             </button>
@@ -1108,7 +1449,7 @@ export const DashboardView = ({
                             {ticket.category_name} &bull; {ticket.citizen_name}
                           </p>
                           <div className="flex items-center justify-between text-[10px] text-rose-700 pt-0.5">
-                            <span>Due was: {ticket.sla_deadline}</span>
+                            <span>Due was: {formatDeadlineIST(ticket.sla_deadline)}</span>
                             <span className="font-bold underline">Inspect ➔</span>
                           </div>
                         </div>
@@ -1132,41 +1473,57 @@ export const DashboardView = ({
               )}
             </div>
 
-            {/* Register New Complaint button (Prominent Primary Button) */}
+            {/* Register New Complaint button (Prominent Primary Button with upcoming Ticket Number) */}
             <button
               type="button"
               onClick={() => {
                 setModalDefaultDecision('ACCEPT');
                 setShowNewComplaintModal(true);
               }}
-              className="px-5 py-2.5 rounded-xl bg-blue-600 hover:bg-blue-700 active:scale-95 text-white text-xs sm:text-sm font-bold flex items-center gap-2 shadow-md hover:shadow-lg transition-all cursor-pointer ring-2 ring-blue-500/20"
+              className="px-3.5 sm:px-4 py-2 sm:py-2.5 rounded-xl bg-blue-600 hover:bg-blue-700 active:scale-95 text-white text-xs sm:text-sm font-bold flex items-center gap-2 shadow-md hover:shadow-lg transition-all cursor-pointer ring-2 ring-blue-500/20 shrink-0"
+              title={`Register New Complaint — Next Assigned Ticket: ${nextTicketNumber}`}
             >
               <Plus className="w-4 h-4 stroke-[2.5]" />
-              <span>+ Register Complaint</span>
+              <span>Register Complaint</span>
+              <span className="px-2 py-0.5 rounded-md bg-white/20 text-white font-mono text-[11px] font-black border border-white/30 tracking-wider shadow-2xs">
+                {nextTicketNumber}
+              </span>
             </button>
           </div>
         </header>
 
         {/* Dashboard Body */}
-        <main className="p-6 space-y-6">
+        <main className="p-6 space-y-6 print:p-0 print:space-y-3 print:block print:w-full">
           {/* Official Printable Nagar Parishad Letterhead */}
-          <div className="hidden print:block mb-6 pb-4 border-b-2 border-slate-900 text-center space-y-1.5">
-            <h1 className="text-2xl font-black text-slate-900 uppercase tracking-wider">
+          <div className="hidden print:block mb-4 pb-3 border-b-2 border-slate-900 text-center space-y-1">
+            <h1 className="text-xl font-black text-slate-900 uppercase tracking-wider">
               नगर परिषद चित्तौड़गढ़ (Nagar Parishad Chittorgarh)
             </h1>
             <p className="text-xs font-semibold text-slate-700">
               स्वायत्त शासन विभाग, राजस्थान सरकार • आधिकारिक नागरिक शिकायत निवारण एवं वार्ड प्रबंधन रिकॉर्ड
             </p>
-            <div className="flex items-center justify-between text-[11px] text-slate-600 font-medium px-4 pt-2 border-t border-slate-300 mt-2">
+            <div className="flex items-center justify-between text-[11px] text-slate-700 font-semibold px-2 pt-1 border-t border-slate-300 mt-1">
               <span>
-                <strong>रिपोर्ट:</strong>{' '}
+                <strong>रिपोर्ट प्रकार:</strong>{' '}
                 {activeTab === 'WARDS'
                   ? 'वार्ड पार्षद सूची (All 60 Wards Council Directory)'
                   : activeTab === 'INTAKE'
                   ? 'इंटेक कतार (Incoming Unverified Helpline & WhatsApp Intake Queue)'
                   : activeTab === 'CLOSED'
                   ? 'सत्यापित निस्तारित शिकायतें (Two-Step Certified Closed Complaints)'
+                  : activeTab === 'REJECTED'
+                  ? 'अस्वीकृत शिकायत ऑडिट रजिस्टर (Rejected Complaints Audit Register)'
                   : 'शिकायत निवारण रजिस्टर (Complaints & Official Tickets Register)'}
+              </span>
+              <span>
+                <strong>कुल रिकॉर्ड:</strong>{' '}
+                {activeTab === 'WARDS'
+                  ? `${filteredWards.length} वार्ड पार्षद`
+                  : activeTab === 'INTAKE'
+                  ? `${filteredIntakes.length} इंटेक शिकायतें`
+                  : activeTab === 'REJECTED'
+                  ? `${allRejectedComplaints.length} अस्वीकृत शिकायतें`
+                  : `${activeTab === 'CLOSED' ? tickets.filter(t => t.status === 'CLOSED').length : filteredTickets.length} शिकायतें`}
               </span>
               <span>
                 <strong>प्रिंट दिनांक:</strong>{' '}
@@ -1247,11 +1604,14 @@ export const DashboardView = ({
                       className="w-full px-3 py-2 rounded-lg border border-slate-200 text-xs text-slate-700 bg-white font-medium"
                     >
                       <option value="ALL">All 60 Wards</option>
-                      {wards.map((w) => (
-                        <option key={w.ward_number} value={w.ward_number}>
-                          Ward {w.ward_number} - {w.ward_name}
-                        </option>
-                      ))}
+                      {wards.map((w) => {
+                        const cleanName = (w.ward_name || '').replace(new RegExp(`^Ward\\s*${w.ward_number}\\s*[-–—:]*\\s*`, 'i'), '').trim();
+                        return (
+                          <option key={w.ward_number} value={w.ward_number}>
+                            Ward {w.ward_number} — {cleanName || w.ward_name}
+                          </option>
+                        );
+                      })}
                     </select>
                   </div>
 
@@ -1422,8 +1782,8 @@ export const DashboardView = ({
           {/* TAB: DASHBOARD / ALL TICKETS / CLOSED / SLA */}
           {(activeTab === 'DASHBOARD' || activeTab === 'TICKETS' || activeTab === 'CLOSED' || activeTab === 'SLA') && (
             <div className="space-y-4">
-              <div className="bg-white rounded-2xl border border-slate-200 shadow-2xs overflow-hidden">
-              <div className="px-6 py-4 border-b border-slate-200 flex flex-wrap items-center justify-between gap-4">
+              <div className="bg-white rounded-2xl border border-slate-200 shadow-2xs overflow-hidden print:border-none print:shadow-none print:rounded-none">
+              <div className="px-6 py-4 border-b border-slate-200 flex flex-wrap items-center justify-between gap-4 print:hidden">
                 <div>
                   <h3 className="text-sm font-bold text-slate-900">
                     {activeTab === 'SLA' 
@@ -1511,28 +1871,6 @@ export const DashboardView = ({
                     </button>
                   </div>
 
-                  <div className="flex items-center gap-2">
-                    <span className="text-xs text-slate-500 hidden md:inline font-semibold">2-Step Filter:</span>
-                    <select
-                      value={selectedStatus}
-                      onChange={(e) => {
-                        const val = e.target.value;
-                        setSelectedStatus(val);
-                        if (val === 'CLOSED') {
-                          setActiveTab('CLOSED');
-                        } else if (activeTab === 'CLOSED' && val !== 'CLOSED') {
-                          setActiveTab('TICKETS');
-                        }
-                      }}
-                      className="px-2.5 py-1.5 rounded-lg border border-slate-300 text-xs font-semibold text-slate-700 bg-white shadow-2xs cursor-pointer focus:ring-2 focus:ring-blue-600 focus:outline-none"
-                    >
-                      <option value="ALL">All Statuses (सभी शिकायतें)</option>
-                      <option value="OFFICER_PENDING">🛡️ Step 1 Pending (Officer Verification शेष)</option>
-                      <option value="CITIZEN_PENDING">📞 Step 2 Pending (Citizen Confirmation शेष)</option>
-                      <option value="CLOSED">✅ 2-Step Complete (सफलतापूर्वक बंद)</option>
-                    </select>
-                  </div>
-
                   {/* Export & Print Action Buttons */}
                   <div className="flex items-center gap-2 print:hidden">
                     <button
@@ -1546,7 +1884,7 @@ export const DashboardView = ({
                     </button>
                     <button
                       type="button"
-                      onClick={() => window.print()}
+                      onClick={handleTriggerPrint}
                       title="Print Official Complaints Sheet or Save as PDF"
                       className="px-3 py-1.5 rounded-lg bg-slate-800 hover:bg-slate-900 text-white font-bold text-xs shadow-xs inline-flex items-center gap-1.5 transition-all active:scale-95 cursor-pointer"
                     >
@@ -1558,9 +1896,9 @@ export const DashboardView = ({
               </div>
 
               {/* Table Container with Smooth Horizontal Scrolling & Zero Overlap */}
-              <div className="overflow-x-auto border-t-2 border-slate-400 rounded-b-xl shadow-xs">
-                <table className="w-full min-w-[1260px] border-collapse border border-slate-400 text-left text-xs text-slate-800">
-                  <thead className="bg-slate-100 border-b-2 border-slate-500 font-bold uppercase tracking-wider text-[11px] text-slate-800 select-none">
+              <div className="overflow-x-auto print:overflow-visible border-t-2 border-slate-400 rounded-b-xl shadow-xs print:border-none print:shadow-none">
+                <table className="w-full min-w-[1260px] print:min-w-full border-collapse border border-slate-400 text-left text-xs text-slate-800">
+                  <thead className="bg-slate-100 print:static border-b-2 border-slate-500 font-bold uppercase tracking-wider text-[11px] text-slate-800 select-none">
                     <tr>
                       <th className="px-4 py-3.5 border-r border-slate-400 w-[140px] min-w-[140px] whitespace-nowrap">Ticket ID</th>
                       <th className="px-4 py-3.5 border-r border-slate-400 w-[170px] min-w-[170px] whitespace-nowrap">Citizen &amp; Contact</th>
@@ -1651,7 +1989,7 @@ export const DashboardView = ({
                             <div className="flex items-center gap-1.5 font-semibold text-xs whitespace-nowrap">
                               <ClockAlert className={`w-3.5 h-3.5 shrink-0 ${ticket.is_overdue ? 'text-rose-600' : 'text-slate-500'}`} />
                               <span className={ticket.is_overdue ? 'text-rose-600 font-bold' : 'text-slate-800 font-medium'}>
-                                {ticket.sla_deadline}
+                                {formatDeadlineIST(ticket.sla_deadline)}
                               </span>
                             </div>
                             {ticket.is_overdue ? (
@@ -1842,8 +2180,8 @@ export const DashboardView = ({
           {/* TAB: INTAKE QUEUE (Helpline Calls & WhatsApp Intake) */}
           {activeTab === 'INTAKE' && (
             <div className="space-y-4">
-              <div className="bg-white rounded-2xl border border-slate-200 shadow-2xs overflow-hidden">
-              <div className="px-6 py-4 border-b border-slate-200 flex flex-wrap items-center justify-between gap-4">
+              <div className="bg-white rounded-2xl border border-slate-200 shadow-2xs overflow-hidden print:border-none print:shadow-none print:rounded-none">
+              <div className="px-6 py-4 border-b border-slate-200 flex flex-wrap items-center justify-between gap-4 print:hidden">
                 <div>
                   <h3 className="text-sm font-bold text-slate-900">
                     Incoming Unverified Complaint Intake Queue (Workflow A &amp; B)
@@ -1914,7 +2252,7 @@ export const DashboardView = ({
                     </button>
                     <button
                       type="button"
-                      onClick={() => window.print()}
+                      onClick={handleTriggerPrint}
                       title="Print Intake Queue or Save as PDF"
                       className="px-3 py-1.5 rounded-lg bg-slate-800 hover:bg-slate-900 text-white font-bold text-xs shadow-xs inline-flex items-center gap-1.5 transition-all active:scale-95 cursor-pointer"
                     >
@@ -1925,9 +2263,9 @@ export const DashboardView = ({
                 </div>
               </div>
 
-              <div className="overflow-x-auto border-t-2 border-slate-400">
-                <table className="w-full min-w-[1050px] border-collapse border border-slate-400 text-left text-xs text-slate-800">
-                  <thead className="bg-slate-100 border-b-2 border-slate-500 font-bold uppercase tracking-wider text-[11px] text-slate-800 select-none">
+              <div className="overflow-x-auto print:overflow-visible border-t-2 border-slate-400 print:border-none">
+                <table className="w-full min-w-[1050px] print:min-w-full border-collapse border border-slate-400 text-left text-xs text-slate-800">
+                  <thead className="bg-slate-100 print:static border-b-2 border-slate-500 font-bold uppercase tracking-wider text-[11px] text-slate-800 select-none">
                     <tr>
                       <th className="px-4 py-3.5 border-r border-slate-400 w-[170px] min-w-[170px] whitespace-nowrap">Channel &amp; Time</th>
                       <th className="px-4 py-3.5 border-r border-slate-400 w-[180px] min-w-[180px] whitespace-nowrap">Citizen Info</th>
@@ -2076,11 +2414,338 @@ export const DashboardView = ({
           </div>
           )}
 
+          {/* TAB: REJECTED COMPLAINTS (अस्वीकृत शिकायत ऑडिट रजिस्टर) */}
+          {activeTab === 'REJECTED' && (
+            <div className="space-y-4">
+              <div className="bg-white rounded-2xl border border-slate-200 shadow-2xs overflow-hidden print:border-none print:shadow-none print:rounded-none">
+                {/* Header Section */}
+                <div className="px-4 sm:px-6 py-4 border-b border-slate-200 flex flex-col sm:flex-row sm:items-center justify-between gap-3 print:hidden">
+                  <div>
+                    <h3 className="text-sm font-bold text-slate-900 flex items-center gap-2">
+                      <XCircle className="w-4 h-4 text-rose-600 shrink-0" />
+                      <span>Rejected Complaints Audit Register (अस्वीकृत शिकायतें)</span>
+                    </h3>
+                    <p className="text-xs text-slate-500 mt-0.5">
+                      Complaints rejected during citizen intake or registration with recorded mandatory audit reasons
+                    </p>
+                  </div>
+
+                  <div className="flex flex-wrap items-center gap-2 sm:gap-3">
+                    <span className="text-xs font-bold text-rose-700 bg-rose-50 border border-rose-200 px-3 py-1 rounded-full whitespace-nowrap">
+                      {filteredRejectedComplaints.length} / {allRejectedComplaints.length} Rejected
+                    </span>
+
+                    <button
+                      type="button"
+                      onClick={handleExportRejectedCsv}
+                      title="Download Filtered Rejected Complaints as Excel CSV"
+                      className="px-3 py-1.5 rounded-lg bg-emerald-600 hover:bg-emerald-700 text-white font-bold text-xs shadow-xs inline-flex items-center gap-1.5 transition-all active:scale-95 cursor-pointer"
+                    >
+                      <Download className="w-3.5 h-3.5 stroke-[2.5]" />
+                      <span>Excel (CSV)</span>
+                    </button>
+                    <button
+                      type="button"
+                      onClick={handleTriggerPrint}
+                      title="Print Rejected Complaints Report or Save as PDF"
+                      className="px-3 py-1.5 rounded-lg bg-slate-800 hover:bg-slate-900 text-white font-bold text-xs shadow-xs inline-flex items-center gap-1.5 transition-all active:scale-95 cursor-pointer"
+                    >
+                      <Printer className="w-3.5 h-3.5 stroke-[2.5]" />
+                      <span>Print</span>
+                    </button>
+                  </div>
+                </div>
+
+                {/* Filter Bar for Rejected Complaints (Responsive) */}
+                <div className="p-3 sm:p-4 bg-slate-50/90 border-b border-slate-200 flex flex-wrap items-center gap-2.5 print:hidden">
+                  {/* Search Input */}
+                  <div className="relative flex-1 min-w-[200px] sm:min-w-[240px]">
+                    <Search className="w-3.5 h-3.5 absolute left-3 top-2.5 text-slate-400" />
+                    <input
+                      type="text"
+                      value={rejectedSearch}
+                      onChange={(e) => setRejectedSearch(e.target.value)}
+                      placeholder="Search citizen, phone, ward, problem, audit reason..."
+                      className="w-full pl-8 pr-8 py-1.5 rounded-lg border border-slate-200 text-xs bg-white text-slate-800 placeholder:text-slate-400 focus:outline-none focus:ring-2 focus:ring-rose-500 shadow-2xs"
+                    />
+                    {rejectedSearch && (
+                      <button
+                        type="button"
+                        onClick={() => setRejectedSearch('')}
+                        className="absolute right-2.5 top-2 text-slate-400 hover:text-slate-600"
+                        title="Clear search"
+                      >
+                        <X className="w-3.5 h-3.5" />
+                      </button>
+                    )}
+                  </div>
+
+                  {/* Ward Dropdown Filter */}
+                  <div className="w-full sm:w-auto min-w-[170px]">
+                    <select
+                      value={rejectedWard}
+                      onChange={(e) => setRejectedWard(e.target.value)}
+                      className="w-full px-3 py-1.5 rounded-lg border border-slate-200 text-xs bg-white text-slate-800 font-medium focus:outline-none focus:ring-2 focus:ring-rose-500 cursor-pointer shadow-2xs"
+                    >
+                      <option value="ALL">All 60 Wards (सभी वार्ड)</option>
+                      {[...wards]
+                        .sort((a, b) => a.ward_number - b.ward_number)
+                        .map((w) => (
+                          <option key={w.ward_number} value={w.ward_number.toString()}>
+                            Ward {w.ward_number} - {w.councillor_name}
+                          </option>
+                        ))}
+                    </select>
+                  </div>
+
+                  {/* Source Channel Dropdown Filter */}
+                  <div className="w-full sm:w-auto min-w-[150px]">
+                    <select
+                      value={rejectedChannel}
+                      onChange={(e) => setRejectedChannel(e.target.value)}
+                      className="w-full px-3 py-1.5 rounded-lg border border-slate-200 text-xs bg-white text-slate-800 font-medium focus:outline-none focus:ring-2 focus:ring-rose-500 cursor-pointer shadow-2xs"
+                    >
+                      <option value="ALL">All Channels (सभी स्रोत)</option>
+                      <option value="WHATSAPP">WhatsApp (व्हाट्सएप)</option>
+                      <option value="INTAKE">Helpline / Desk (हेल्पलाइन)</option>
+                      <option value="TICKET">Official Ticket (आधिकारिक टिकट)</option>
+                    </select>
+                  </div>
+
+                  {/* Problem Category Dropdown Filter */}
+                  <div className="w-full sm:w-auto min-w-[170px]">
+                    <select
+                      value={rejectedCategory}
+                      onChange={(e) => setRejectedCategory(e.target.value)}
+                      className="w-full px-3 py-1.5 rounded-lg border border-slate-200 text-xs bg-white text-slate-800 font-medium focus:outline-none focus:ring-2 focus:ring-rose-500 cursor-pointer shadow-2xs"
+                    >
+                      <option value="ALL">All Categories (सभी श्रेणियां)</option>
+                      {rejectedCategories.map((cat) => (
+                        <option key={cat} value={cat}>
+                          {cat}
+                        </option>
+                      ))}
+                    </select>
+                  </div>
+
+                  {/* Reset Filters Button */}
+                  {(rejectedWard !== 'ALL' || rejectedChannel !== 'ALL' || rejectedCategory !== 'ALL' || rejectedSearch.trim() !== '') && (
+                    <button
+                      type="button"
+                      onClick={() => {
+                        setRejectedSearch('');
+                        setRejectedWard('ALL');
+                        setRejectedChannel('ALL');
+                        setRejectedCategory('ALL');
+                      }}
+                      className="inline-flex items-center gap-1 px-3 py-1.5 rounded-lg border border-rose-200 bg-rose-50 hover:bg-rose-100 text-rose-700 text-xs font-semibold transition-colors cursor-pointer shadow-2xs whitespace-nowrap"
+                      title="Reset all filters"
+                    >
+                      <RotateCcw className="w-3 h-3" />
+                      <span>Reset Filters</span>
+                    </button>
+                  )}
+                </div>
+
+                {/* Mobile View: Responsive Cards (< md screens) */}
+                <div className="block md:hidden divide-y divide-slate-200 print:hidden">
+                  {filteredRejectedComplaints.length === 0 ? (
+                    <div className="px-6 py-12 text-center text-slate-400">
+                      <div className="flex flex-col items-center justify-center space-y-2">
+                        <XCircle className="w-8 h-8 text-slate-300" />
+                        <p className="font-semibold text-slate-600">No Rejected Complaints Found</p>
+                        <p className="text-xs text-slate-400 max-w-sm">
+                          {rejectedWard !== 'ALL' || rejectedChannel !== 'ALL' || rejectedCategory !== 'ALL' || rejectedSearch.trim()
+                            ? 'No complaints match your active filter criteria. Click "Reset Filters" to clear.'
+                            : 'Any complaints rejected during intake or registration with a mandatory audit reason will appear here.'}
+                        </p>
+                      </div>
+                    </div>
+                  ) : (
+                    filteredRejectedComplaints.map((item) => (
+                      <div key={item.id} className="p-4 space-y-3 bg-white hover:bg-slate-50 transition-colors">
+                        <div className="flex items-center justify-between gap-2">
+                          <div className="flex items-center gap-1.5 flex-wrap">
+                            <span className="px-2 py-0.5 rounded-full text-[10px] font-bold border border-slate-300 bg-slate-100 text-slate-700">
+                              {item.channel}
+                            </span>
+                            <span className="px-2 py-0.5 rounded bg-slate-100 text-slate-800 font-bold text-[10px] border border-slate-300">
+                              Ward {item.ward_number}
+                            </span>
+                          </div>
+                          <span className="px-2 py-0.5 rounded-full text-[9px] font-bold uppercase tracking-wider border bg-rose-50 text-rose-800 border-rose-300">
+                            REJECTED
+                          </span>
+                        </div>
+
+                        <div>
+                          <div className="flex items-start justify-between gap-2">
+                            <div>
+                              <p className="font-bold text-slate-900 text-xs">{item.citizen_name}</p>
+                              <p className="text-slate-500 font-mono text-[11px] mt-0.5">{item.citizen_phone}</p>
+                            </div>
+                            <div className="flex items-center gap-1.5 shrink-0">
+                              <a
+                                href={`tel:${item.citizen_phone}`}
+                                title="Call Citizen"
+                                className="p-1.5 rounded-lg border border-slate-300 text-blue-600 bg-blue-50 hover:bg-blue-100 transition-colors inline-flex items-center justify-center"
+                              >
+                                <Phone className="w-3.5 h-3.5" />
+                              </a>
+                              <a
+                                href={`https://wa.me/${cleanPhoneForWhatsApp(item.citizen_phone)}`}
+                                target="_blank"
+                                rel="noreferrer"
+                                title="WhatsApp Citizen"
+                                className="p-1.5 rounded-lg border border-emerald-300 text-emerald-600 bg-emerald-50 hover:bg-emerald-100 transition-colors inline-flex items-center justify-center"
+                              >
+                                <MessageSquare className="w-3.5 h-3.5" />
+                              </a>
+                            </div>
+                          </div>
+                          <p className="text-slate-600 text-xs mt-1.5 leading-snug">{item.address}</p>
+                          {item.landmark && (
+                            <p className="text-slate-400 text-[10px] mt-0.5">Near: {item.landmark}</p>
+                          )}
+                        </div>
+
+                        <div className="pt-2 border-t border-slate-100">
+                          <p className="font-bold text-slate-900 text-xs">{item.category_name}</p>
+                          <p className="text-slate-600 text-xs mt-0.5 leading-relaxed">{item.problem_description}</p>
+                        </div>
+
+                        {/* Rejection Reason Alert Box */}
+                        <div className="p-2.5 rounded-lg bg-rose-50 border border-rose-200 text-rose-800 text-xs leading-snug">
+                          <strong className="text-rose-900 font-bold block text-[11px] mb-0.5">
+                            Audit Reason (अस्वीकृति का कारण):
+                          </strong>
+                          <p className="font-medium text-rose-800">{item.rejection_reason}</p>
+                        </div>
+
+                        <div className="flex items-center justify-between text-[10px] text-slate-400 pt-1">
+                          <span>Logged: {item.received_at}</span>
+                        </div>
+                      </div>
+                    ))
+                  )}
+                </div>
+
+                {/* Desktop & Printable Table View */}
+                <div className="hidden md:block print:block overflow-x-auto print:overflow-visible border-t-2 border-slate-400 print:border-none">
+                  <table className="w-full min-w-[1050px] print:min-w-full border-collapse border border-slate-400 text-left text-xs text-slate-800">
+                    <thead className="bg-slate-100 print:static border-b-2 border-slate-500 font-bold uppercase tracking-wider text-[11px] text-slate-800 select-none">
+                      <tr>
+                        <th className="px-4 py-3.5 border-r border-slate-400 w-[150px] min-w-[150px] whitespace-nowrap">Channel &amp; Time</th>
+                        <th className="px-4 py-3.5 border-r border-slate-400 w-[170px] min-w-[170px] whitespace-nowrap">Citizen Info</th>
+                        <th className="px-4 py-3.5 border-r border-slate-400 w-[190px] min-w-[190px]">Ward &amp; Locality</th>
+                        <th className="px-4 py-3.5 border-r border-slate-400 min-w-[220px]">Reported Problem</th>
+                        <th className="px-4 py-3.5 border-r border-slate-400 min-w-[240px]">Rejection Reason (अस्वीकृति का कारण)</th>
+                        <th className="px-4 py-3.5 border-r border-slate-400 w-[110px] min-w-[110px] text-center whitespace-nowrap">Status</th>
+                        <th className="px-4 py-3.5 text-right w-[110px] min-w-[110px] whitespace-nowrap print:hidden">Contact</th>
+                      </tr>
+                    </thead>
+                    <tbody className="divide-y divide-slate-400 bg-white">
+                      {filteredRejectedComplaints.length === 0 ? (
+                        <tr>
+                          <td colSpan={7} className="px-6 py-12 text-center text-slate-400">
+                            <div className="flex flex-col items-center justify-center space-y-2">
+                              <XCircle className="w-8 h-8 text-slate-300" />
+                              <p className="font-semibold text-slate-600">No Rejected Complaints Found</p>
+                              <p className="text-xs text-slate-400">
+                                {rejectedWard !== 'ALL' || rejectedChannel !== 'ALL' || rejectedCategory !== 'ALL' || rejectedSearch.trim()
+                                  ? 'No rejected complaints match your active filter criteria.'
+                                  : 'Any complaints rejected during intake or registration with a mandatory audit reason will appear here.'}
+                              </p>
+                            </div>
+                          </td>
+                        </tr>
+                      ) : (
+                        filteredRejectedComplaints.map((item) => (
+                          <tr key={item.id} className="hover:bg-rose-50/40 even:bg-slate-50/50 transition-colors">
+                            {/* Channel & Time */}
+                            <td className="px-4 py-3.5 border-r border-slate-400 align-middle whitespace-nowrap">
+                              <span className="inline-flex items-center gap-1.5 px-2.5 py-1 rounded-full text-[11px] font-bold border border-slate-300 bg-slate-100 text-slate-700">
+                                {item.channel}
+                              </span>
+                              <p className="text-[11px] text-slate-500 font-medium mt-1">{item.received_at}</p>
+                            </td>
+
+                            {/* Citizen Info */}
+                            <td className="px-4 py-3.5 border-r border-slate-400 align-middle whitespace-nowrap">
+                              <p className="font-bold text-slate-900 text-xs">{item.citizen_name}</p>
+                              <p className="text-slate-600 font-mono text-[11px] mt-0.5">{item.citizen_phone}</p>
+                            </td>
+
+                            {/* Ward & Locality */}
+                            <td className="px-4 py-3.5 border-r border-slate-400 align-middle">
+                              <span className="inline-block px-2 py-0.5 rounded bg-slate-100 text-slate-800 font-bold text-[11px] border border-slate-300">
+                                Ward {item.ward_number}
+                              </span>
+                              <p className="text-slate-600 text-[11px] mt-1 leading-snug">{item.address}</p>
+                              {item.landmark && (
+                                <p className="text-slate-400 text-[10px] mt-0.5">Near: {item.landmark}</p>
+                              )}
+                            </td>
+
+                            {/* Reported Problem */}
+                            <td className="px-4 py-3.5 border-r border-slate-400 align-middle">
+                              <p className="font-bold text-slate-900 text-xs leading-snug">{item.category_name}</p>
+                              <p className="text-slate-600 text-[11px] mt-0.5 leading-relaxed line-clamp-2" title={item.problem_description}>
+                                {item.problem_description}
+                              </p>
+                            </td>
+
+                            {/* Rejection Reason */}
+                            <td className="px-4 py-3.5 border-r border-slate-400 align-middle">
+                              <div className="p-2.5 rounded-lg bg-rose-50 border border-rose-200 text-rose-800 text-xs leading-snug">
+                                <strong className="text-rose-900 font-bold block text-[11px] mb-0.5">Audit Reason:</strong>
+                                <span>{item.rejection_reason}</span>
+                              </div>
+                            </td>
+
+                            {/* Status */}
+                            <td className="px-4 py-3.5 border-r border-slate-400 align-middle text-center whitespace-nowrap">
+                              <span className="inline-block px-2.5 py-1 rounded-full text-[10px] font-bold uppercase tracking-wider border bg-rose-50 text-rose-800 border-rose-300">
+                                REJECTED
+                              </span>
+                            </td>
+
+                            {/* Actions */}
+                            <td className="px-4 py-3.5 align-middle text-right whitespace-nowrap print:hidden">
+                              <div className="flex items-center justify-end gap-1.5">
+                                <a
+                                  href={`tel:${item.citizen_phone}`}
+                                  title="Call Citizen"
+                                  className="p-1.5 rounded-lg border border-slate-300 text-slate-700 hover:bg-slate-100 transition-colors inline-flex items-center justify-center shrink-0"
+                                >
+                                  <Phone className="w-3.5 h-3.5 text-blue-600" />
+                                </a>
+                                <a
+                                  href={`https://wa.me/${cleanPhoneForWhatsApp(item.citizen_phone)}`}
+                                  target="_blank"
+                                  rel="noreferrer"
+                                  title="WhatsApp Citizen"
+                                  className="p-1.5 rounded-lg border border-emerald-300 text-emerald-600 hover:bg-emerald-50 transition-colors inline-flex items-center justify-center shrink-0"
+                                >
+                                  <MessageSquare className="w-3.5 h-3.5" />
+                                </a>
+                              </div>
+                            </td>
+                          </tr>
+                        ))
+                      )}
+                    </tbody>
+                  </table>
+                </div>
+              </div>
+            </div>
+          )}
+
           {/* TAB: 60 WARDS DIRECTORY */}
           {activeTab === 'WARDS' && (
             <div className="space-y-4">
-              <div className="bg-white rounded-2xl border border-slate-200 shadow-2xs overflow-hidden">
-              <div className="px-6 py-4 border-b border-slate-200 flex flex-wrap items-center justify-between gap-4">
+              <div className="bg-white rounded-2xl border border-slate-200 shadow-2xs overflow-hidden print:border-none print:shadow-none print:rounded-none">
+              <div className="px-6 py-4 border-b border-slate-200 flex flex-wrap items-center justify-between gap-4 print:hidden">
                 <div>
                   <h3 className="text-sm font-bold text-slate-900">
                     Chittorgarh Nagar Parishad: Parshad List (All 60 Wards)
@@ -2118,7 +2783,7 @@ export const DashboardView = ({
                     </button>
                     <button
                       type="button"
-                      onClick={() => window.print()}
+                      onClick={handleTriggerPrint}
                       title="Print 60 Wards Parshad List or Save as PDF"
                       className="px-3 py-1.5 rounded-lg bg-slate-800 hover:bg-slate-900 text-white font-bold text-xs shadow-xs inline-flex items-center gap-1.5 transition-all active:scale-95 cursor-pointer"
                     >
@@ -2129,9 +2794,9 @@ export const DashboardView = ({
                 </div>
               </div>
 
-              <div className="overflow-x-auto max-h-[600px] border-t-2 border-slate-400">
-                <table className="w-full min-w-[1050px] border-collapse border border-slate-400 text-left text-xs text-slate-800">
-                  <thead className="sticky top-0 bg-slate-100 border-b-2 border-slate-500 font-bold uppercase tracking-wider text-[11px] text-slate-800 z-10 select-none">
+              <div className="overflow-x-auto max-h-[600px] print:max-h-none print:overflow-visible border-t-2 border-slate-400 print:border-none">
+                <table className="w-full min-w-[1050px] print:min-w-full border-collapse border border-slate-400 text-left text-xs text-slate-800">
+                  <thead className="sticky top-0 print:static bg-slate-100 border-b-2 border-slate-500 font-bold uppercase tracking-wider text-[11px] text-slate-800 z-10 select-none">
                     <tr>
                       <th className="px-4 py-3.5 border-r border-slate-400 w-[100px] min-w-[100px] whitespace-nowrap">Ward</th>
                       <th className="px-4 py-3.5 border-r border-slate-400 w-[190px] min-w-[190px]">Ward Name</th>
@@ -2156,7 +2821,7 @@ export const DashboardView = ({
                             Ward {ward.ward_number}
                           </td>
                           <td className="px-4 py-3.5 border-r border-slate-400 align-middle font-semibold text-slate-900">
-                            {ward.ward_name}
+                            {(ward.ward_name || '').replace(new RegExp(`^Ward\\s*${ward.ward_number}\\s*[-–—:]*\\s*`, 'i'), '').trim() || ward.ward_name}
                           </td>
                           <td className="px-4 py-3.5 border-r border-slate-400 align-middle whitespace-nowrap">
                             <span className="px-2.5 py-0.5 rounded-full bg-slate-100 text-slate-700 text-[10px] font-medium border border-slate-300">
@@ -2456,7 +3121,7 @@ export const DashboardView = ({
         </main>
 
         {/* Global Municipal Admin Footer (Civic Leadership & ChittorTech Credits) */}
-        <div className="px-6 pb-6">
+        <div className="px-6 pb-6 print:hidden">
           <AdminFooter />
         </div>
       </div>
@@ -2484,13 +3149,14 @@ export const DashboardView = ({
         <NewComplaintModal
           wards={wards}
           departments={departments}
+          nextTicketNumber={nextTicketNumber}
           defaultDecision={modalDefaultDecision}
           onClose={() => setShowNewComplaintModal(false)}
           onSubmit={(data) => {
             if (data.decision === 'ACCEPT') {
               const dept = departments.find(d => d.name === data.department_name) || departments[0];
               const wardObj = wards.find(w => w.ward_number === data.ward_number);
-              const ticketNum = `SNP-2026-${String(tickets.length + 842).padStart(4, '0')}`;
+              const ticketNum = generateNextTicketNumber(tickets);
               const deadlineHours = data.sla_hours || dept.default_sla_hours || 48;
 
               let deadlineMs = Math.round(deadlineHours * 3600 * 1000);
@@ -2502,10 +3168,12 @@ export const DashboardView = ({
               const deadlineDate = new Date(Date.now() + deadlineMs);
 
               const formatDeadlineDisplay = (hours: number, date: Date) => {
-                const timeStr = date.toLocaleTimeString('en-US', { hour: '2-digit', minute: '2-digit', second: '2-digit' });
+                const timeStr = date.toLocaleTimeString('en-US', { hour: '2-digit', minute: '2-digit', second: '2-digit', hour12: true, timeZone: 'Asia/Kolkata' });
                 if (hours < 0.01) return `30s Target (${timeStr})`;
                 if (hours < 0.05) return `1m Target (${timeStr})`;
-                return date.toLocaleString('en-IN', { hour: '2-digit', minute: '2-digit', day: '2-digit', month: '2-digit' });
+                const datePart = date.toLocaleDateString('en-IN', { day: '2-digit', month: '2-digit', timeZone: 'Asia/Kolkata' });
+                const timePart = date.toLocaleTimeString('en-US', { hour: '2-digit', minute: '2-digit', hour12: true, timeZone: 'Asia/Kolkata' });
+                return `${datePart}, ${timePart}`;
               };
 
               const formatSlaLabel = (hours: number) => {
