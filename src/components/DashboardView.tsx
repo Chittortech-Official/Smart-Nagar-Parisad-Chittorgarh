@@ -46,7 +46,9 @@ import {
   ArrowUpRight,
   Pencil,
   Sparkles,
-  Headphones
+  Headphones,
+  Download,
+  Printer
 } from 'lucide-react';
 
 interface DashboardViewProps {
@@ -186,22 +188,56 @@ export const DashboardView = ({
     );
   }, [departments, departmentSearch]);
 
-  // Derived filtered tickets
+  // Derived filtered tickets with Advanced 2-Step Closure & Keyword Filtering
   const filteredTickets = useMemo(() => {
     return tickets.filter((ticket) => {
       if (activeTab === 'CLOSED' && ticket.status !== 'CLOSED') return false;
       if (selectedWard !== 'ALL' && ticket.ward_number.toString() !== selectedWard) return false;
       if (selectedDepartment !== 'ALL' && ticket.department_name !== selectedDepartment) return false;
-      if (selectedStatus !== 'ALL' && ticket.status !== selectedStatus) return false;
+
+      // Advanced 2-Step Closure Status Filtering
+      if (selectedStatus !== 'ALL') {
+        if (selectedStatus === 'OFFICER_PENDING') {
+          // Step 1: Officer Verification Baaki
+          if (ticket.status === 'CLOSED' || ticket.authority_confirmed) return false;
+        } else if (selectedStatus === 'CITIZEN_PENDING' || selectedStatus === 'RESOLVED_AWAITING_CITIZEN') {
+          // Step 2: Officer Confirmed, but Citizen Confirmation Baaki
+          if (ticket.status === 'CLOSED' || !ticket.authority_confirmed) return false;
+        } else if (selectedStatus === 'CLOSED') {
+          if (ticket.status !== 'CLOSED') return false;
+        } else if (selectedStatus === 'REGISTERED') {
+          if (ticket.status === 'CLOSED') return false;
+        } else if (ticket.status !== selectedStatus) {
+          return false;
+        }
+      }
+
+      // Advanced Search (Supports Ticket #, Citizen, Phone, Ward, Dept, Category & 2-Step Keywords)
       if (searchQuery.trim()) {
-        const q = searchQuery.toLowerCase();
-        const match = 
+        const q = searchQuery.toLowerCase().trim();
+
+        // 2-Step closure state keywords
+        const isCitizenPending = ticket.authority_confirmed && ticket.status !== 'CLOSED';
+        const isOfficerPending = !ticket.authority_confirmed && ticket.status !== 'CLOSED';
+        const isClosed = ticket.status === 'CLOSED';
+
+        const keywordMatch = 
+          ((q === 'citizen' || q.includes('citizen') || q.includes('step 2') || q.includes('nagrik')) && isCitizenPending) ||
+          ((q === 'officer' || q.includes('officer') || q.includes('step 1') || q.includes('adhikari')) && isOfficerPending) ||
+          ((q === 'closed' || q.includes('closed') || q.includes('complete') || q.includes('2 step') || q.includes('verified') || q.includes('band')) && isClosed);
+
+        const textMatch = 
           ticket.ticket_number.toLowerCase().includes(q) ||
           ticket.citizen_name.toLowerCase().includes(q) ||
           ticket.citizen_phone.includes(q) ||
           ticket.address.toLowerCase().includes(q) ||
-          ticket.category_name.toLowerCase().includes(q);
-        if (!match) return false;
+          ticket.category_name.toLowerCase().includes(q) ||
+          ticket.department_name.toLowerCase().includes(q) ||
+          `ward ${ticket.ward_number}`.includes(q) ||
+          `ward ${ticket.ward_number}`.toLowerCase() === q ||
+          ticket.ward_number.toString() === q;
+
+        if (!keywordMatch && !textMatch) return false;
       }
       return true;
     });
@@ -262,6 +298,144 @@ export const DashboardView = ({
       pendingIntakes
     };
   }, [tickets, intakes]);
+
+  // Utility for Universal UTF-8 CSV Export (Microsoft Excel / Google Sheets compatible with Hindi BOM)
+  const downloadCsv = (filename: string, headers: string[], rows: (string | number)[][]) => {
+    const csvRows = [
+      headers.map(h => `"${String(h).replace(/"/g, '""')}"`).join(','),
+      ...rows.map(row => 
+        row.map(val => `"${String(val ?? '').replace(/"/g, '""')}"`).join(',')
+      )
+    ];
+    // \uFEFF Byte Order Mark ensures Hindi / Devanagari renders cleanly in Excel on Windows
+    const blob = new Blob(['\uFEFF' + csvRows.join('\r\n')], { type: 'text/csv;charset=utf-8;' });
+    const url = URL.createObjectURL(blob);
+    const a = document.createElement('a');
+    a.href = url;
+    a.download = filename;
+    document.body.appendChild(a);
+    a.click();
+    document.body.removeChild(a);
+    URL.revokeObjectURL(url);
+  };
+
+  const handleExportTicketsCsv = () => {
+    const dateStr = new Date().toISOString().split('T')[0];
+    const isClosedOnly = activeTab === 'CLOSED';
+    const dataList = isClosedOnly ? tickets.filter(t => t.status === 'CLOSED') : filteredTickets;
+
+    const headers = [
+      'Ticket Number (टिकट सं.)',
+      'Citizen Name (नागरिक का नाम)',
+      'Mobile Number (मोबाइल नंबर)',
+      'Ward Number (वार्ड सं.)',
+      'Locality & Address (स्थान एवं पता)',
+      'Landmark (पहचान)',
+      'Department (विभाग)',
+      'Problem Category (समस्या श्रेणी)',
+      'Problem Description (समस्या विवरण)',
+      'Registration Time (दर्ज समय)',
+      'SLA Deadline (समाधान लक्ष्य)',
+      'SLA Hours (घंटे)',
+      'SLA Overdue? (समय सीमा पार)',
+      'Step 1 Officer Verified (अधिकारी पुष्टि)',
+      'Step 1 Officer Notes (अधिकारी टिप्पणी)',
+      'Step 2 Citizen Satisfied (नागरिक संतुष्टि)',
+      'Step 2 Citizen Feedback (नागरिक फीडबैक)',
+      'Final Status (अंतिम स्थिति)'
+    ];
+
+    const rows = dataList.map(t => [
+      t.ticket_number,
+      t.citizen_name,
+      t.citizen_phone,
+      `Ward ${t.ward_number}`,
+      t.address,
+      t.landmark || '',
+      t.department_name,
+      t.category_name,
+      t.problem_description,
+      t.registration_time || '',
+      t.sla_deadline || '',
+      t.sla_hours || '',
+      t.is_overdue ? 'YES (Overdue)' : 'NO (On Time)',
+      t.authority_confirmed ? 'YES (Verified)' : 'PENDING',
+      t.authority_notes || '',
+      t.citizen_satisfied !== undefined ? (t.citizen_satisfied ? 'YES (Satisfied)' : 'NO (Unsatisfied)') : 'PENDING',
+      t.citizen_feedback || '',
+      t.status
+    ]);
+
+    downloadCsv(
+      `SNP_Chittorgarh_Complaints_Report_${dateStr}.csv`,
+      headers,
+      rows
+    );
+  };
+
+  const handleExportWardsCsv = () => {
+    const dateStr = new Date().toISOString().split('T')[0];
+    const headers = [
+      'Ward Number (वार्ड संख्या)',
+      'Ward Name (वार्ड का नाम)',
+      'Zone (क्षेत्र)',
+      'Elected Parshad (पार्षद का नाम)',
+      'Parshad Mobile (मोबाइल नंबर)',
+      'Key Landmarks (प्रमुख स्थल)'
+    ];
+
+    const rows = [...wards]
+      .sort((a, b) => a.ward_number - b.ward_number)
+      .map(w => [
+        w.ward_number,
+        w.ward_name,
+        w.zone,
+        w.councillor_name,
+        w.councillor_phone,
+        w.key_landmarks || ''
+      ]);
+
+    downloadCsv(
+      `SNP_Chittorgarh_Parshad_List_60_Wards_${dateStr}.csv`,
+      headers,
+      rows
+    );
+  };
+
+  const handleExportIntakesCsv = () => {
+    const dateStr = new Date().toISOString().split('T')[0];
+    const headers = [
+      'Intake Channel (माध्यम)',
+      'Citizen Name (नागरिक का नाम)',
+      'Citizen Mobile (मोबाइल नंबर)',
+      'Ward Number (वार्ड सं.)',
+      'Locality & Address (पता)',
+      'Problem Category (श्रेणी)',
+      'Problem Description (समस्या विवरण)',
+      'Queue Status (स्थिति)',
+      'Received Time (प्राप्ति समय)',
+      'Rejection Reason (अस्वीकृति कारण)'
+    ];
+
+    const rows = intakes.map(i => [
+      i.intake_channel,
+      i.citizen_name,
+      i.citizen_phone,
+      `Ward ${i.ward_number}`,
+      i.address,
+      i.category_name,
+      i.problem_description,
+      i.status,
+      i.received_at || '',
+      i.rejection_reason || ''
+    ]);
+
+    downloadCsv(
+      `SNP_Chittorgarh_Intake_Queue_${dateStr}.csv`,
+      headers,
+      rows
+    );
+  };
 
   // Handlers for Two Step Closure
   const handleAuthorityConfirm = (ticketId: string, notes: string) => {
@@ -847,7 +1021,7 @@ export const DashboardView = ({
                 type="text"
                 value={searchQuery}
                 onChange={(e) => setSearchQuery(e.target.value)}
-                placeholder="Search ticket, citizen, ward, street..."
+                placeholder="Search ticket, citizen, ward, 'step 1', 'citizen pending'..."
                 className="w-full pl-9 pr-3 py-1.5 rounded-lg border border-slate-200 bg-slate-50 text-xs focus:bg-white focus:outline-none focus:ring-2 focus:ring-blue-600"
               />
             </div>
@@ -975,10 +1149,37 @@ export const DashboardView = ({
 
         {/* Dashboard Body */}
         <main className="p-6 space-y-6">
+          {/* Official Printable Nagar Parishad Letterhead */}
+          <div className="hidden print:block mb-6 pb-4 border-b-2 border-slate-900 text-center space-y-1.5">
+            <h1 className="text-2xl font-black text-slate-900 uppercase tracking-wider">
+              नगर परिषद चित्तौड़गढ़ (Nagar Parishad Chittorgarh)
+            </h1>
+            <p className="text-xs font-semibold text-slate-700">
+              स्वायत्त शासन विभाग, राजस्थान सरकार • आधिकारिक नागरिक शिकायत निवारण एवं वार्ड प्रबंधन रिकॉर्ड
+            </p>
+            <div className="flex items-center justify-between text-[11px] text-slate-600 font-medium px-4 pt-2 border-t border-slate-300 mt-2">
+              <span>
+                <strong>रिपोर्ट:</strong>{' '}
+                {activeTab === 'WARDS'
+                  ? 'वार्ड पार्षद सूची (All 60 Wards Council Directory)'
+                  : activeTab === 'INTAKE'
+                  ? 'इंटेक कतार (Incoming Unverified Helpline & WhatsApp Intake Queue)'
+                  : activeTab === 'CLOSED'
+                  ? 'सत्यापित निस्तारित शिकायतें (Two-Step Certified Closed Complaints)'
+                  : 'शिकायत निवारण रजिस्टर (Complaints & Official Tickets Register)'}
+              </span>
+              <span>
+                <strong>प्रिंट दिनांक:</strong>{' '}
+                {new Date().toLocaleDateString('hi-IN', { day: '2-digit', month: '2-digit', year: 'numeric' })}{' '}
+                {new Date().toLocaleTimeString('en-IN', { hour: '2-digit', minute: '2-digit' })}
+              </span>
+            </div>
+          </div>
+
           {(activeTab === 'DASHBOARD' || activeTab === 'TICKETS' || activeTab === 'CLOSED' || activeTab === 'SLA') && (
             <>
               {/* Greeting & Subtitle (Matches Reference Screenshot 2) */}
-              <div className="flex flex-wrap items-center justify-between gap-4">
+              <div className="flex flex-wrap items-center justify-between gap-4 print:hidden">
                 <div>
                   <h1 className="text-2xl font-bold text-slate-900 flex items-center gap-2">
                     Good morning, {userRole.replace('_', ' ')} 👋
@@ -997,7 +1198,7 @@ export const DashboardView = ({
           </div>
 
           {/* ADVANCED FILTERS CARD (Matches Reference Screenshot 2) */}
-          <div className="bg-white rounded-2xl border border-slate-200 shadow-2xs overflow-hidden">
+          <div className="bg-white rounded-2xl border border-slate-200 shadow-2xs overflow-hidden print:hidden">
             <div 
               onClick={() => setFiltersOpen(!filtersOpen)}
               className="flex items-center justify-between px-5 py-3.5 bg-slate-50/80 cursor-pointer border-b border-slate-200"
@@ -1084,7 +1285,7 @@ export const DashboardView = ({
           </div>
 
           {/* 6 OFFICIAL KPI CARDS (Workflow D: Chairman/Executive & Admin Monitoring) */}
-          <div className="grid grid-cols-2 md:grid-cols-3 xl:grid-cols-6 gap-3.5">
+          <div className="grid grid-cols-2 md:grid-cols-3 xl:grid-cols-6 gap-3.5 print:hidden">
             {/* Card 1: Today's Registered */}
             <div className="bg-white p-4 rounded-2xl border border-slate-200 shadow-2xs space-y-2">
               <div className="flex items-center justify-between text-xs text-slate-500 font-medium">
@@ -1123,12 +1324,12 @@ export const DashboardView = ({
               </div>
             </button>
 
-            {/* Card 3: Pending In-Progress */}
+            {/* Card 3: Pending Complaints */}
             <button
               type="button"
               onClick={() => {
                 setActiveTab('TICKETS');
-                setSelectedStatus('IN_PROGRESS');
+                setSelectedStatus('REGISTERED');
               }}
               title="Click to filter pending complaints"
               className="bg-white p-4 rounded-2xl border border-slate-200 shadow-2xs space-y-2 text-left hover:border-amber-400 hover:shadow-md transition-all active:scale-[0.98] cursor-pointer"
@@ -1141,7 +1342,7 @@ export const DashboardView = ({
                 {kpis.pendingComplaints}
               </p>
               <div className="text-[10px] text-amber-700 flex items-center justify-between">
-                <span>In field execution</span>
+                <span>Awaiting resolution</span>
                 <span className="text-amber-700 font-semibold text-[9px]">Filter ➔</span>
               </div>
             </button>
@@ -1249,61 +1450,69 @@ export const DashboardView = ({
                         if (activeTab === 'CLOSED') setActiveTab('TICKETS');
                         setSelectedStatus('ALL');
                       }}
-                      className={`px-3 py-1 rounded-lg text-xs font-bold transition-all cursor-pointer ${
+                      className={`px-3 py-1.5 rounded-lg text-xs font-bold transition-all cursor-pointer ${
                         activeTab !== 'CLOSED' && selectedStatus === 'ALL'
-                          ? 'bg-white text-blue-700 shadow-xs'
+                          ? 'bg-white text-slate-900 shadow-xs ring-1 ring-slate-200'
                           : 'text-slate-600 hover:text-slate-900'
                       }`}
                     >
                       All ({tickets.length})
                     </button>
+
+                    {/* Step 1: Officer Verification Baaki */}
                     <button
                       type="button"
                       onClick={() => {
                         if (activeTab === 'CLOSED') setActiveTab('TICKETS');
-                        setSelectedStatus('REGISTERED');
+                        setSelectedStatus('OFFICER_PENDING');
                       }}
-                      className={`px-3 py-1 rounded-lg text-xs font-bold transition-all cursor-pointer ${
-                        activeTab !== 'CLOSED' && selectedStatus === 'REGISTERED'
-                          ? 'bg-white text-blue-700 shadow-xs'
-                          : 'text-slate-600 hover:text-slate-900'
+                      className={`px-3 py-1.5 rounded-lg text-xs font-bold transition-all flex items-center gap-1.5 cursor-pointer ${
+                        activeTab !== 'CLOSED' && selectedStatus === 'OFFICER_PENDING'
+                          ? 'bg-blue-600 text-white shadow-xs'
+                          : 'text-blue-700 hover:bg-blue-50'
                       }`}
                     >
-                      Registered ({tickets.filter(t => t.status === 'REGISTERED').length})
+                      <ShieldCheck className="w-3.5 h-3.5" />
+                      <span>Step 1: Officer Pending ({tickets.filter(t => !t.authority_confirmed && t.status !== 'CLOSED').length})</span>
                     </button>
+
+                    {/* Step 2: Citizen Confirmation Baaki */}
                     <button
                       type="button"
                       onClick={() => {
                         if (activeTab === 'CLOSED') setActiveTab('TICKETS');
-                        setSelectedStatus('IN_PROGRESS');
+                        setSelectedStatus('CITIZEN_PENDING');
                       }}
-                      className={`px-3 py-1 rounded-lg text-xs font-bold transition-all cursor-pointer ${
-                        activeTab !== 'CLOSED' && (selectedStatus === 'IN_PROGRESS' || selectedStatus === 'RESOLVED_AWAITING_CITIZEN')
-                          ? 'bg-white text-amber-700 shadow-xs'
-                          : 'text-slate-600 hover:text-slate-900'
+                      className={`px-3 py-1.5 rounded-lg text-xs font-bold transition-all flex items-center gap-1.5 cursor-pointer ${
+                        activeTab !== 'CLOSED' && selectedStatus === 'CITIZEN_PENDING'
+                          ? 'bg-amber-500 text-white shadow-xs'
+                          : 'text-amber-800 hover:bg-amber-50'
                       }`}
                     >
-                      In Progress ({tickets.filter(t => t.status === 'IN_PROGRESS' || t.status === 'RESOLVED_AWAITING_CITIZEN').length})
+                      <Phone className="w-3.5 h-3.5" />
+                      <span>Step 2: Citizen Call Pending ({tickets.filter(t => t.authority_confirmed && t.status !== 'CLOSED').length})</span>
                     </button>
+
+                    {/* Both Complete: Closed */}
                     <button
                       type="button"
                       onClick={() => {
                         setActiveTab('CLOSED');
                         setSelectedStatus('CLOSED');
                       }}
-                      className={`px-3 py-1 rounded-lg text-xs font-bold transition-all flex items-center gap-1.5 cursor-pointer ${
+                      className={`px-3 py-1.5 rounded-lg text-xs font-bold transition-all flex items-center gap-1.5 cursor-pointer ${
                         activeTab === 'CLOSED' || selectedStatus === 'CLOSED'
                           ? 'bg-emerald-600 text-white shadow-xs'
-                          : 'text-slate-600 hover:text-emerald-700'
+                          : 'text-emerald-700 hover:bg-emerald-50'
                       }`}
                     >
                       <CheckCircle2 className="w-3.5 h-3.5" />
-                      <span>Closed ({kpis.confirmedResolvedClosed})</span>
+                      <span>2-Step Complete ({tickets.filter(t => t.status === 'CLOSED').length})</span>
                     </button>
                   </div>
 
                   <div className="flex items-center gap-2">
-                    <span className="text-xs text-slate-500 hidden md:inline">Dropdown:</span>
+                    <span className="text-xs text-slate-500 hidden md:inline font-semibold">2-Step Filter:</span>
                     <select
                       value={selectedStatus}
                       onChange={(e) => {
@@ -1315,22 +1524,42 @@ export const DashboardView = ({
                           setActiveTab('TICKETS');
                         }
                       }}
-                      className="px-2.5 py-1 rounded-lg border border-slate-200 text-xs font-semibold text-slate-700 bg-white shadow-2xs"
+                      className="px-2.5 py-1.5 rounded-lg border border-slate-300 text-xs font-semibold text-slate-700 bg-white shadow-2xs cursor-pointer focus:ring-2 focus:ring-blue-600 focus:outline-none"
                     >
-                      <option value="ALL">All Statuses</option>
-                      <option value="REGISTERED">Registered</option>
-                      <option value="IN_PROGRESS">In Progress</option>
-                      <option value="RESOLVED_AWAITING_CITIZEN">Resolved (Awaiting Citizen)</option>
-                      <option value="CLOSED">Closed (Verified)</option>
-                      <option value="REOPENED">Reopened</option>
+                      <option value="ALL">All Statuses (सभी शिकायतें)</option>
+                      <option value="OFFICER_PENDING">🛡️ Step 1 Pending (Officer Verification शेष)</option>
+                      <option value="CITIZEN_PENDING">📞 Step 2 Pending (Citizen Confirmation शेष)</option>
+                      <option value="CLOSED">✅ 2-Step Complete (सफलतापूर्वक बंद)</option>
                     </select>
+                  </div>
+
+                  {/* Export & Print Action Buttons */}
+                  <div className="flex items-center gap-2 print:hidden">
+                    <button
+                      type="button"
+                      onClick={handleExportTicketsCsv}
+                      title="Download Complaints as Excel CSV (Devanagari / Hindi UTF-8 Supported)"
+                      className="px-3 py-1.5 rounded-lg bg-emerald-600 hover:bg-emerald-700 text-white font-bold text-xs shadow-xs inline-flex items-center gap-1.5 transition-all active:scale-95 cursor-pointer"
+                    >
+                      <Download className="w-3.5 h-3.5 stroke-[2.5]" />
+                      <span>Excel (CSV)</span>
+                    </button>
+                    <button
+                      type="button"
+                      onClick={() => window.print()}
+                      title="Print Official Complaints Sheet or Save as PDF"
+                      className="px-3 py-1.5 rounded-lg bg-slate-800 hover:bg-slate-900 text-white font-bold text-xs shadow-xs inline-flex items-center gap-1.5 transition-all active:scale-95 cursor-pointer"
+                    >
+                      <Printer className="w-3.5 h-3.5 stroke-[2.5]" />
+                      <span>Print</span>
+                    </button>
                   </div>
                 </div>
               </div>
 
-              {/* Table Container with Horizontal Scaling & Visible Grid Lines */}
-              <div className="overflow-x-auto border-t-2 border-slate-400">
-                <table className="w-full min-w-[1020px] border-collapse border border-slate-400 text-left text-xs text-slate-800">
+              {/* Table Container with Smooth Horizontal Scrolling & Zero Overlap */}
+              <div className="overflow-x-auto border-t-2 border-slate-400 rounded-b-xl shadow-xs">
+                <table className="w-full min-w-[1260px] border-collapse border border-slate-400 text-left text-xs text-slate-800">
                   <thead className="bg-slate-100 border-b-2 border-slate-500 font-bold uppercase tracking-wider text-[11px] text-slate-800 select-none">
                     <tr>
                       <th className="px-4 py-3.5 border-r border-slate-400 w-[140px] min-w-[140px] whitespace-nowrap">Ticket ID</th>
@@ -1338,8 +1567,8 @@ export const DashboardView = ({
                       <th className="px-4 py-3.5 border-r border-slate-400 w-[190px] min-w-[190px]">Ward &amp; Location</th>
                       <th className="px-4 py-3.5 border-r border-slate-400 min-w-[220px]">Department &amp; Problem</th>
                       <th className="px-4 py-3.5 border-r border-slate-400 w-[160px] min-w-[160px] whitespace-nowrap">SLA &amp; Deadline</th>
-                      <th className="px-4 py-3.5 border-r border-slate-400 w-[150px] min-w-[150px] text-center whitespace-nowrap">Status</th>
-                      <th className="px-4 py-3.5 text-right w-[200px] min-w-[200px] whitespace-nowrap sticky right-0 bg-slate-100 border-l border-slate-400 z-10">Actions</th>
+                      <th className="px-4 py-3.5 border-r border-slate-400 w-[175px] min-w-[175px] text-center whitespace-nowrap">Status</th>
+                      <th className="px-4 py-3.5 text-right w-[255px] min-w-[255px] whitespace-nowrap bg-slate-100 border-l border-slate-400 print:hidden">Actions</th>
                     </tr>
                   </thead>
                   <tbody className="divide-y divide-slate-400 bg-white">
@@ -1436,43 +1665,63 @@ export const DashboardView = ({
                             )}
                           </td>
 
-                          {/* Status */}
+                          {/* Status - Explicit 2-Step Closure Lifecycle Indicator */}
                           <td className="px-4 py-3.5 border-r border-slate-400 align-middle text-center whitespace-nowrap">
                             {ticket.status !== 'CLOSED' ? (
-                              <button
-                                type="button"
-                                onClick={() => setSelectedTicketForClosure(ticket)}
-                                title="Click to verify & close complaint"
-                                className={`inline-block px-3 py-1 rounded-full text-[10px] font-bold uppercase tracking-wider text-center whitespace-nowrap shadow-2xs border cursor-pointer hover:opacity-85 transition-opacity ${
-                                  ticket.status === 'RESOLVED_AWAITING_CITIZEN'
-                                    ? 'bg-amber-50 text-amber-800 border-amber-300 ring-1 ring-amber-300'
-                                    : ticket.status === 'REOPENED'
-                                    ? 'bg-rose-50 text-rose-800 border-rose-300'
-                                    : 'bg-blue-50 text-blue-800 border-blue-300'
-                                }`}
-                              >
-                                {ticket.status.replace(/_/g, ' ')}
-                              </button>
+                              ticket.authority_confirmed ? (
+                                <button
+                                  type="button"
+                                  onClick={() => setSelectedTicketForClosure(ticket)}
+                                  title="Officer confirmed resolution! Step 2 Citizen call is pending."
+                                  className="inline-flex items-center gap-1.5 px-3 py-1 rounded-full text-[10px] font-bold uppercase tracking-wider text-center whitespace-nowrap shadow-2xs border bg-amber-100 text-amber-900 border-amber-400 ring-2 ring-amber-300/80 animate-pulse cursor-pointer hover:bg-amber-200 transition-colors"
+                                >
+                                  <span className="w-1.5 h-1.5 rounded-full bg-amber-600 animate-ping" />
+                                  <span>📞 Citizen Conf. Baaki</span>
+                                </button>
+                              ) : (
+                                <button
+                                  type="button"
+                                  onClick={() => setSelectedTicketForClosure(ticket)}
+                                  title="Step 1 Pending: Click to call officer and verify field completion."
+                                  className="inline-flex items-center gap-1 px-3 py-1 rounded-full text-[10px] font-bold uppercase tracking-wider text-center whitespace-nowrap shadow-2xs border bg-blue-50 text-blue-800 border-blue-300 cursor-pointer hover:bg-blue-100 transition-colors"
+                                >
+                                  <ShieldCheck className="w-3 h-3 text-blue-600" />
+                                  <span>Step 1: Officer Baaki</span>
+                                </button>
+                              )
                             ) : (
-                              <span className="inline-block px-3 py-1 rounded-full text-[10px] font-bold uppercase tracking-wider text-center whitespace-nowrap shadow-2xs border bg-emerald-50 text-emerald-800 border-emerald-300">
-                                CLOSED
+                              <span className="inline-flex items-center gap-1 px-3 py-1 rounded-full text-[10px] font-bold uppercase tracking-wider text-center whitespace-nowrap shadow-2xs border bg-emerald-50 text-emerald-800 border-emerald-300">
+                                <CheckCircle2 className="w-3.5 h-3.5 text-emerald-600" />
+                                <span>2-Step Complete</span>
                               </span>
                             )}
                           </td>
 
-                          {/* Actions (Sticky Right Column) */}
-                          <td className="px-3 py-3.5 align-middle text-right whitespace-nowrap sticky right-0 bg-white border-l border-slate-300 shadow-[-4px_0_6px_-2px_rgba(0,0,0,0.06)] z-10">
+                          {/* Actions (Clean & Properly Sized with No Overlap) */}
+                          <td className="px-3.5 py-3.5 align-middle text-right whitespace-nowrap bg-white border-l border-slate-300 print:hidden">
                             <div className="flex items-center justify-end gap-1.5 whitespace-nowrap">
                               {ticket.status !== 'CLOSED' ? (
-                                <button
-                                  type="button"
-                                  onClick={() => setSelectedTicketForClosure(ticket)}
-                                  className="px-3 py-1.5 rounded-lg bg-emerald-600 hover:bg-emerald-700 text-white font-semibold text-xs shadow-xs inline-flex items-center gap-1 transition-all active:scale-95 whitespace-nowrap cursor-pointer"
-                                  title="Mandatory Two-Step Complaint Closure (Verify & Close)"
-                                >
-                                  <ShieldCheck className="w-3.5 h-3.5" />
-                                  <span>🛡️ 2-Step Closure</span>
-                                </button>
+                                ticket.authority_confirmed ? (
+                                  <button
+                                    type="button"
+                                    onClick={() => setSelectedTicketForClosure(ticket)}
+                                    className="px-2.5 py-1.5 rounded-lg bg-amber-500 hover:bg-amber-600 text-white font-bold text-xs shadow-xs inline-flex items-center gap-1 transition-all active:scale-95 whitespace-nowrap cursor-pointer ring-1 ring-amber-300"
+                                    title="Officer Confirmed! Click to call citizen & certify final closure."
+                                  >
+                                    <Phone className="w-3.5 h-3.5 stroke-[2.2]" />
+                                    <span>Call &amp; Close</span>
+                                  </button>
+                                ) : (
+                                  <button
+                                    type="button"
+                                    onClick={() => setSelectedTicketForClosure(ticket)}
+                                    className="px-2.5 py-1.5 rounded-lg bg-blue-600 hover:bg-blue-700 text-white font-semibold text-xs shadow-xs inline-flex items-center gap-1 transition-all active:scale-95 whitespace-nowrap cursor-pointer"
+                                    title="Step 1: Call officer to verify field resolution"
+                                  >
+                                    <ShieldCheck className="w-3.5 h-3.5" />
+                                    <span>Officer Verify</span>
+                                  </button>
+                                )
                               ) : (
                                 <span className="px-2.5 py-1 rounded-lg bg-emerald-50 text-emerald-800 border border-emerald-300 font-bold text-[11px] inline-flex items-center gap-1 whitespace-nowrap">
                                   <CheckCircle2 className="w-3.5 h-3.5 text-emerald-600" />
@@ -1483,17 +1732,17 @@ export const DashboardView = ({
                                 type="button"
                                 onClick={() => handleOpenWhatsAppModal(ticket)}
                                 title="Forward / Dispatch WhatsApp to Citizen, Councillor or Officer"
-                                className="px-2.5 py-1.5 rounded-lg bg-slate-100 hover:bg-slate-200 text-slate-800 border border-slate-300 font-semibold text-xs inline-flex items-center gap-1 shadow-2xs transition-all active:scale-95 whitespace-nowrap cursor-pointer"
+                                className="px-2 py-1.5 rounded-lg bg-slate-100 hover:bg-slate-200 text-slate-800 border border-slate-300 font-semibold text-xs inline-flex items-center gap-1 shadow-2xs transition-all active:scale-95 whitespace-nowrap cursor-pointer"
                               >
                                 <MessageSquare className="w-3.5 h-3.5 text-emerald-600" />
-                                <span>WhatsApp</span>
+                                <span className="hidden xl:inline">WhatsApp</span>
                               </button>
                               <a
                                 href={`tel:${ticket.citizen_phone}`}
                                 title="Call Citizen"
                                 className="p-1.5 rounded-lg border border-slate-300 text-slate-700 hover:bg-slate-100 transition-colors inline-flex items-center justify-center shrink-0"
                               >
-                                <Phone className="w-4 h-4 text-blue-600" />
+                                <Phone className="w-3.5 h-3.5 text-blue-600" />
                               </a>
                             </div>
                           </td>
@@ -1505,7 +1754,7 @@ export const DashboardView = ({
               </div>
 
               {/* Pagination Controls & Rows Per Page (Addresses user question: "Will it only show top 10?") */}
-              <div className="px-6 py-3.5 bg-slate-50 border-t border-slate-200 flex flex-wrap items-center justify-between gap-4 select-none">
+              <div className="px-6 py-3.5 bg-slate-50 border-t border-slate-200 flex flex-wrap items-center justify-between gap-4 select-none print:hidden">
                 <div className="flex flex-wrap items-center gap-4 text-xs text-slate-600">
                   <span>
                     Showing{' '}
@@ -1651,6 +1900,28 @@ export const DashboardView = ({
                       Accepted ({intakes.filter(i => i.status === 'ACCEPTED').length})
                     </button>
                   </div>
+
+                  {/* Export & Print */}
+                  <div className="flex items-center gap-2 print:hidden">
+                    <button
+                      type="button"
+                      onClick={handleExportIntakesCsv}
+                      title="Export Intake Queue to Excel CSV"
+                      className="px-3 py-1.5 rounded-lg bg-emerald-600 hover:bg-emerald-700 text-white font-bold text-xs shadow-xs inline-flex items-center gap-1.5 transition-all active:scale-95 cursor-pointer"
+                    >
+                      <Download className="w-3.5 h-3.5 stroke-[2.5]" />
+                      <span>Excel (CSV)</span>
+                    </button>
+                    <button
+                      type="button"
+                      onClick={() => window.print()}
+                      title="Print Intake Queue or Save as PDF"
+                      className="px-3 py-1.5 rounded-lg bg-slate-800 hover:bg-slate-900 text-white font-bold text-xs shadow-xs inline-flex items-center gap-1.5 transition-all active:scale-95 cursor-pointer"
+                    >
+                      <Printer className="w-3.5 h-3.5 stroke-[2.5]" />
+                      <span>Print</span>
+                    </button>
+                  </div>
                 </div>
               </div>
 
@@ -1663,7 +1934,7 @@ export const DashboardView = ({
                       <th className="px-4 py-3.5 border-r border-slate-400 w-[200px] min-w-[200px]">Ward &amp; Locality</th>
                       <th className="px-4 py-3.5 border-r border-slate-400 min-w-[260px]">Reported Problem</th>
                       <th className="px-4 py-3.5 border-r border-slate-400 w-[150px] min-w-[150px] text-center whitespace-nowrap">Queue Status</th>
-                      <th className="px-4 py-3.5 text-right w-[160px] min-w-[160px] whitespace-nowrap">Verification Action</th>
+                      <th className="px-4 py-3.5 text-right w-[160px] min-w-[160px] whitespace-nowrap print:hidden">Verification Action</th>
                     </tr>
                   </thead>
                   <tbody className="divide-y divide-slate-400 bg-white">
@@ -1740,7 +2011,7 @@ export const DashboardView = ({
                             </span>
                           </td>
 
-                          <td className="px-4 py-3.5 align-middle text-right whitespace-nowrap">
+                          <td className="px-4 py-3.5 align-middle text-right whitespace-nowrap print:hidden">
                             {intake.status === 'PENDING_REVIEW' ? (
                               <button
                                 type="button"
@@ -1820,7 +2091,7 @@ export const DashboardView = ({
                 </div>
                 <div className="flex flex-wrap items-center gap-3">
                   {/* Quick Parshad Search */}
-                  <div className="relative w-64">
+                  <div className="relative w-64 print:hidden">
                     <Search className="w-3.5 h-3.5 absolute left-3 top-2.5 text-slate-400" />
                     <input
                       type="text"
@@ -1833,6 +2104,28 @@ export const DashboardView = ({
                   <span className="text-xs font-bold text-slate-700 bg-slate-100 px-3 py-1 rounded-full border border-slate-200">
                     {filteredWards.length} / 60 Parshads
                   </span>
+
+                  {/* Export & Print */}
+                  <div className="flex items-center gap-2 print:hidden">
+                    <button
+                      type="button"
+                      onClick={handleExportWardsCsv}
+                      title="Export 60 Wards Parshad Directory to Excel CSV"
+                      className="px-3 py-1.5 rounded-lg bg-emerald-600 hover:bg-emerald-700 text-white font-bold text-xs shadow-xs inline-flex items-center gap-1.5 transition-all active:scale-95 cursor-pointer"
+                    >
+                      <Download className="w-3.5 h-3.5 stroke-[2.5]" />
+                      <span>Excel (CSV)</span>
+                    </button>
+                    <button
+                      type="button"
+                      onClick={() => window.print()}
+                      title="Print 60 Wards Parshad List or Save as PDF"
+                      className="px-3 py-1.5 rounded-lg bg-slate-800 hover:bg-slate-900 text-white font-bold text-xs shadow-xs inline-flex items-center gap-1.5 transition-all active:scale-95 cursor-pointer"
+                    >
+                      <Printer className="w-3.5 h-3.5 stroke-[2.5]" />
+                      <span>Print</span>
+                    </button>
+                  </div>
                 </div>
               </div>
 
@@ -1846,7 +2139,7 @@ export const DashboardView = ({
                       <th className="px-4 py-3.5 border-r border-slate-400 w-[170px] min-w-[170px]">Parshad</th>
                       <th className="px-4 py-3.5 border-r border-slate-400 w-[160px] min-w-[160px] whitespace-nowrap">Parshad Phone Number</th>
                       <th className="px-4 py-3.5 border-r border-slate-400 min-w-[200px]">Key Landmarks</th>
-                      <th className="px-4 py-3.5 text-right w-[140px] min-w-[140px] whitespace-nowrap">Actions</th>
+                      <th className="px-4 py-3.5 text-right w-[140px] min-w-[140px] whitespace-nowrap print:hidden">Actions</th>
                     </tr>
                   </thead>
                   <tbody className="divide-y divide-slate-400 bg-white">
@@ -1882,7 +2175,7 @@ export const DashboardView = ({
                           <td className="px-4 py-3.5 border-r border-slate-400 align-middle text-slate-600 text-xs">
                             {ward.key_landmarks}
                           </td>
-                          <td className="px-4 py-3.5 align-middle text-right whitespace-nowrap">
+                          <td className="px-4 py-3.5 align-middle text-right whitespace-nowrap print:hidden">
                             <button
                               type="button"
                               onClick={() => setEditingWard(ward)}
