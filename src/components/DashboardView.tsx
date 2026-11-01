@@ -1,4 +1,4 @@
-import { useState, useMemo, useEffect } from 'react';
+import { useState, useMemo, useEffect, useRef } from 'react';
 import type { 
   UserRole, 
   Ticket, 
@@ -38,7 +38,6 @@ import {
   Plus, 
   Phone, 
   ShieldCheck, 
-  AlertCircle, 
   AlertTriangle,
   CheckCircle2, 
   Filter,
@@ -97,8 +96,8 @@ const TAB_HEADER_METADATA: Record<string, { title: string; hindi: string; icon: 
     bg: 'bg-white/95 border-blue-300 text-blue-600 shadow-2xs'
   },
   CLOSED: {
-    title: 'Closed Complaints',
-    hindi: 'प्रमाणित निस्तारित शिकायतें',
+    title: 'Completed Complaints',
+    hindi: 'प्रमाणित पूर्ण शिकायतें',
     icon: CheckCircle2,
     bg: 'bg-white/95 border-emerald-300 text-emerald-600 shadow-2xs'
   },
@@ -109,9 +108,9 @@ const TAB_HEADER_METADATA: Record<string, { title: string; hindi: string; icon: 
     bg: 'bg-white/95 border-rose-300 text-rose-600 shadow-2xs'
   },
   SLA: {
-    title: 'SLA & Overdue',
-    hindi: 'समय-सीमा उल्लंघन मॉनिटरिंग',
-    icon: ClockAlert,
+    title: 'SLA Breached Complaints',
+    hindi: 'समय-सीमा उल्लंघन शिकायतें',
+    icon: AlertTriangle,
     bg: 'bg-white/95 border-rose-300 text-rose-600 shadow-2xs'
   },
   WARDS: {
@@ -148,7 +147,7 @@ export const DashboardView = ({
   departments,
   tickets,
   intakes,
-  notifications: _notifications,
+  notifications,
   onUpdateTicket,
   onAddTicket,
   onUpdateIntake,
@@ -202,6 +201,35 @@ export const DashboardView = ({
   const [modalDefaultDecision, setModalDefaultDecision] = useState<'ACCEPT' | 'REJECT'>('ACCEPT');
   const [intakeFilterStatus, setIntakeFilterStatus] = useState<'ALL' | 'PENDING_REVIEW' | 'REJECTED' | 'ACCEPTED'>('ALL');
   const [showNotificationsDropdown, setShowNotificationsDropdown] = useState(false);
+  const [notificationTab, setNotificationTab] = useState<'ALL' | 'TASKS' | 'SLA' | 'LOGS'>('ALL');
+  const notificationDropdownRef = useRef<HTMLDivElement>(null);
+
+  // Close notifications dropdown on outside click
+  useEffect(() => {
+    const handleOutsideClick = (event: MouseEvent) => {
+      if (
+        notificationDropdownRef.current &&
+        !notificationDropdownRef.current.contains(event.target as Node)
+      ) {
+        setShowNotificationsDropdown(false);
+      }
+    };
+    if (showNotificationsDropdown) {
+      document.addEventListener('mousedown', handleOutsideClick);
+    }
+    return () => {
+      document.removeEventListener('mousedown', handleOutsideClick);
+    };
+  }, [showNotificationsDropdown]);
+
+  // Actionable Municipal Work & Alerts Data (Live Work Tracker)
+  const pendingIntakesList = useMemo(() => intakes.filter(i => i.status === 'PENDING_REVIEW'), [intakes]);
+  const overdueTicketsList = useMemo(() => tickets.filter(t => t.is_overdue && t.status !== 'CLOSED'), [tickets]);
+  const citizenCallPendingList = useMemo(() => tickets.filter(t => t.status === 'RESOLVED_AWAITING_CITIZEN'), [tickets]);
+  const officerPendingList = useMemo(() => tickets.filter(t => t.status === 'REGISTERED' || t.status === 'IN_PROGRESS'), [tickets]);
+  const recentLogsList = useMemo(() => notifications.slice(0, 10), [notifications]);
+
+  const totalActionableCount = pendingIntakesList.length + overdueTicketsList.length + citizenCallPendingList.length;
 
   // Status modal state (custom confirmation & success popup)
   const [statusModalConfig, setStatusModalConfig] = useState<StatusModalConfig>({
@@ -1114,29 +1142,7 @@ export const DashboardView = ({
                 MANAGEMENT
               </span>
               <div className="mt-1 space-y-0.5">
-                <button
-                  type="button"
-                  onClick={() => {
-                    setActiveTab('INTAKE');
-                    setMobileMenuOpen(false);
-                  }}
-                  className={`w-full flex items-center justify-between px-2.5 py-2 rounded-lg text-xs font-semibold transition-all ${
-                    activeTab === 'INTAKE'
-                      ? 'bg-blue-600 text-white shadow-md'
-                      : 'text-slate-400 hover:text-white hover:bg-slate-800'
-                  }`}
-                >
-                  <div className="flex items-center gap-2.5">
-                    <Inbox className="w-3.5 h-3.5 shrink-0" />
-                    <span>Intake Queue</span>
-                  </div>
-                  {kpis.pendingIntakes > 0 && (
-                    <span className="px-1.5 py-0.5 rounded-full bg-amber-500 text-slate-950 font-bold text-[9px]">
-                      {kpis.pendingIntakes}
-                    </span>
-                  )}
-                </button>
-
+                {/* 1. All Complaints */}
                 <button
                   type="button"
                   onClick={() => {
@@ -1159,6 +1165,7 @@ export const DashboardView = ({
                   </span>
                 </button>
 
+                {/* 2. Completed Complaints (formerly Closed) */}
                 <button
                   type="button"
                   onClick={() => {
@@ -1174,13 +1181,14 @@ export const DashboardView = ({
                 >
                   <div className="flex items-center gap-2.5">
                     <CheckCircle2 className="w-3.5 h-3.5 shrink-0 text-emerald-400" />
-                    <span>Closed Complaints</span>
+                    <span>Completed Complaints</span>
                   </div>
                   <span className="px-1.5 py-0.5 rounded-full bg-emerald-500/20 text-emerald-300 font-mono text-[9px] font-bold">
                     {kpis.confirmedResolvedClosed}
                   </span>
                 </button>
 
+                {/* 3. Rejected Complaints */}
                 <button
                   type="button"
                   onClick={() => {
@@ -1204,6 +1212,7 @@ export const DashboardView = ({
                   )}
                 </button>
 
+                {/* 4. SLA Breached Tab (Dedicated Tab) */}
                 <button
                   type="button"
                   onClick={() => {
@@ -1212,18 +1221,20 @@ export const DashboardView = ({
                   }}
                   className={`w-full flex items-center justify-between px-2.5 py-2 rounded-lg text-xs font-semibold transition-all ${
                     activeTab === 'SLA'
-                      ? 'bg-blue-600 text-white shadow-md'
+                      ? 'bg-rose-600 text-white shadow-md'
                       : 'text-slate-400 hover:text-white hover:bg-slate-800'
                   }`}
                 >
                   <div className="flex items-center gap-2.5">
-                    <ClockAlert className="w-3.5 h-3.5 shrink-0" />
-                    <span>SLA &amp; Overdue</span>
+                    <AlertTriangle className="w-3.5 h-3.5 shrink-0 text-rose-400" />
+                    <span>SLA Breached</span>
                   </div>
-                  {kpis.overdueComplaints > 0 && (
+                  {kpis.overdueComplaints > 0 ? (
                     <span className="px-1.5 py-0.5 rounded-full bg-rose-500 text-white font-bold text-[9px] animate-pulse">
                       {kpis.overdueComplaints}
                     </span>
+                  ) : (
+                    <span className="text-[10px] text-slate-500 font-mono">0</span>
                   )}
                 </button>
 
@@ -1432,95 +1443,319 @@ export const DashboardView = ({
                 });
               }}
               title="Refresh Data"
-              className="p-2 rounded-xl border border-slate-200 text-slate-600 hover:text-blue-600 hover:bg-slate-50 transition-colors cursor-pointer shrink-0"
+              className="p-2 rounded-xl border border-sky-200 bg-white/95 text-sky-700 hover:text-sky-900 hover:bg-white transition-all cursor-pointer shrink-0 shadow-2xs"
             >
               <RefreshCw className="w-4 h-4" />
             </button>
 
-            {/* Interactive Notifications Bell */}
+            {/* Interactive Municipal Notifications & Tasks Command Center */}
             <div className="relative">
               <button
                 type="button"
                 onClick={() => setShowNotificationsDropdown(prev => !prev)}
-                title="System Notifications & Overdue Alerts"
-                className="p-2.5 rounded-xl border border-slate-200 text-slate-700 hover:bg-slate-100 transition-colors relative cursor-pointer"
+                title={`System Notifications & Work Alerts (${totalActionableCount} Actionable Tasks)`}
+                className="p-2.5 rounded-xl border border-sky-200 bg-white/95 text-sky-800 hover:bg-white hover:text-sky-950 transition-all relative cursor-pointer shadow-2xs"
               >
                 <Bell className="w-4.5 h-4.5" />
-                {kpis.overdueComplaints > 0 ? (
-                  <span className="absolute -top-1 -right-1 px-1.5 py-0.2 rounded-full bg-rose-600 text-white font-bold text-[9px] animate-pulse shadow-xs">
-                    {kpis.overdueComplaints}
+                {totalActionableCount > 0 ? (
+                  <span className={`absolute -top-1.5 -right-1.5 px-1.5 min-w-[18px] h-[18px] rounded-full text-white font-black text-[10px] shadow-sm flex items-center justify-center ${
+                    overdueTicketsList.length > 0 ? 'bg-rose-600 animate-pulse ring-2 ring-rose-200' : 'bg-blue-600 ring-2 ring-blue-200'
+                  }`}>
+                    {totalActionableCount}
                   </span>
                 ) : (
                   <span className="absolute top-1.5 right-1.5 w-2 h-2 rounded-full bg-emerald-500" />
                 )}
               </button>
 
-              {/* Notification Dropdown Panel */}
+              {/* Notification & Tasks Dropdown Panel */}
               {showNotificationsDropdown && (
                 <div 
-                  className="absolute right-0 mt-2 w-80 sm:w-96 bg-white rounded-2xl shadow-2xl border border-slate-200 p-4 z-50 text-left space-y-3 animate-in fade-in zoom-in-95 duration-150"
+                  ref={notificationDropdownRef}
+                  className="absolute right-0 mt-2.5 w-[340px] sm:w-[460px] md:w-[500px] bg-white rounded-3xl shadow-2xl border border-sky-100 z-50 text-left overflow-hidden animate-in fade-in zoom-in-95 duration-150 ring-1 ring-slate-900/10"
                   onClick={(e) => e.stopPropagation()}
                 >
-                  <div className="flex items-center justify-between pb-2 border-b border-slate-100">
-                    <div className="flex items-center gap-2">
-                      <Bell className="w-4 h-4 text-blue-600" />
-                      <h4 className="font-bold text-slate-900 text-xs">Live System Alerts</h4>
+                  {/* Modern Municipal Command Center Header */}
+                  <div className="bg-gradient-to-r from-slate-900 via-sky-950 to-blue-900 px-4 py-3.5 text-white flex items-center justify-between">
+                    <div className="flex items-center gap-2.5">
+                      <div className="p-2 rounded-xl bg-white/10 text-sky-300 border border-white/10 relative">
+                        <Bell className="w-4 h-4" />
+                        {totalActionableCount > 0 && (
+                          <span className="absolute -top-0.5 -right-0.5 w-2 h-2 rounded-full bg-rose-500 animate-ping" />
+                        )}
+                      </div>
+                      <div>
+                        <div className="flex items-center gap-2">
+                          <h4 className="font-extrabold text-sm text-white tracking-tight">
+                            कार्य व अलर्ट केंद्र (Action &amp; Alerts)
+                          </h4>
+                          <span className="px-2 py-0.2 rounded-full bg-sky-500/20 text-sky-300 text-[10px] font-mono font-bold border border-sky-400/30">
+                            {totalActionableCount} Pending
+                          </span>
+                        </div>
+                        <p className="text-[11px] text-sky-200/80 font-medium">
+                          सभी लंबित कार्य, आवक शिकायतें व समय-सीमा ट्रैकिंग
+                        </p>
+                      </div>
                     </div>
-                    <span className="text-[10px] font-bold px-2 py-0.5 rounded-full bg-slate-100 text-slate-600">
-                      {kpis.overdueComplaints} Breached
-                    </span>
+                    <button
+                      type="button"
+                      onClick={() => setShowNotificationsDropdown(false)}
+                      className="p-1.5 rounded-lg text-slate-300 hover:text-white hover:bg-white/10 transition-colors cursor-pointer"
+                      title="Close notifications"
+                    >
+                      <X className="w-4 h-4" />
+                    </button>
                   </div>
 
-                  <div className="max-h-72 overflow-y-auto space-y-2">
-                    {tickets.filter(t => t.is_overdue && t.status !== 'CLOSED').length === 0 ? (
-                      <div className="py-6 text-center text-slate-400 space-y-1.5">
-                        <CheckCircle2 className="w-8 h-8 mx-auto text-emerald-500/80" />
-                        <p className="text-xs font-semibold text-slate-700">All SLAs Healthy</p>
-                        <p className="text-[10px] text-slate-400">No complaints have breached target resolution deadlines.</p>
-                      </div>
-                    ) : (
-                      tickets.filter(t => t.is_overdue && t.status !== 'CLOSED').map(ticket => (
-                        <div 
-                          key={ticket.id}
-                          onClick={() => {
-                            setActiveTab('SLA');
-                            setShowNotificationsDropdown(false);
-                          }}
-                          className="p-2.5 rounded-xl bg-rose-50 border border-rose-200 hover:bg-rose-100/70 transition-colors cursor-pointer space-y-1"
-                        >
-                          <div className="flex items-center justify-between">
-                            <span className="font-bold text-xs text-rose-900 flex items-center gap-1.5">
-                              <AlertTriangle className="w-3.5 h-3.5 text-rose-600" />
-                              SLA Breached: {ticket.ticket_number}
-                            </span>
-                            <span className="text-[10px] font-mono font-bold text-rose-700 bg-rose-200/80 px-1.5 py-0.2 rounded">
-                              Ward {ticket.ward_number}
-                            </span>
-                          </div>
-                          <p className="text-[11px] text-slate-700 truncate font-medium">
-                            {ticket.category_name} &bull; {ticket.citizen_name}
-                          </p>
-                          <div className="flex items-center justify-between text-[10px] text-rose-700 pt-0.5">
-                            <span>Due was: {formatDeadlineIST(ticket.sla_deadline)}</span>
-                            <span className="font-bold underline">Inspect ➔</span>
-                          </div>
+                  {/* Navigation Filter Pills */}
+                  <div className="px-3 py-2 bg-slate-50/90 border-b border-slate-100 flex items-center gap-1.5 overflow-x-auto text-[11px]">
+                    <button
+                      type="button"
+                      onClick={() => setNotificationTab('ALL')}
+                      className={`px-3 py-1 rounded-full font-bold transition-all cursor-pointer whitespace-nowrap ${
+                        notificationTab === 'ALL'
+                          ? 'bg-blue-600 text-white shadow-2xs'
+                          : 'bg-white text-slate-600 border border-slate-200 hover:bg-slate-100'
+                      }`}
+                    >
+                      सभी कार्य ({pendingIntakesList.length + overdueTicketsList.length + citizenCallPendingList.length})
+                    </button>
+                    <button
+                      type="button"
+                      onClick={() => setNotificationTab('TASKS')}
+                      className={`px-3 py-1 rounded-full font-bold transition-all cursor-pointer whitespace-nowrap ${
+                        notificationTab === 'TASKS'
+                          ? 'bg-blue-600 text-white shadow-2xs'
+                          : 'bg-white text-slate-600 border border-slate-200 hover:bg-slate-100'
+                      }`}
+                    >
+                      आवक व सत्यापन ({pendingIntakesList.length + citizenCallPendingList.length})
+                    </button>
+                    <button
+                      type="button"
+                      onClick={() => setNotificationTab('SLA')}
+                      className={`px-3 py-1 rounded-full font-bold transition-all cursor-pointer whitespace-nowrap ${
+                        notificationTab === 'SLA'
+                          ? 'bg-rose-600 text-white shadow-2xs'
+                          : 'bg-white text-rose-700 border border-rose-200 hover:bg-rose-50'
+                      }`}
+                    >
+                      SLA उल्लंघन ({overdueTicketsList.length})
+                    </button>
+                    <button
+                      type="button"
+                      onClick={() => setNotificationTab('LOGS')}
+                      className={`px-3 py-1 rounded-full font-bold transition-all cursor-pointer whitespace-nowrap ${
+                        notificationTab === 'LOGS'
+                          ? 'bg-emerald-600 text-white shadow-2xs'
+                          : 'bg-white text-slate-600 border border-slate-200 hover:bg-slate-100'
+                      }`}
+                    >
+                      WhatsApp संदेश ({recentLogsList.length})
+                    </button>
+                  </div>
+
+                  {/* Notifications Feed */}
+                  <div className="max-h-80 overflow-y-auto p-3 space-y-2.5 divide-y divide-slate-100">
+                    {/* 1. Critical SLA Overdue Breaches */}
+                    {(notificationTab === 'ALL' || notificationTab === 'SLA') && overdueTicketsList.map(ticket => (
+                      <div 
+                        key={`sla-${ticket.id}`}
+                        onClick={() => {
+                          setActiveTab('SLA');
+                          setShowNotificationsDropdown(false);
+                        }}
+                        className="p-3 rounded-2xl bg-rose-50/70 border border-rose-200/90 hover:bg-rose-100/70 transition-all cursor-pointer space-y-1.5 shadow-2xs"
+                      >
+                        <div className="flex items-center justify-between">
+                          <span className="font-extrabold text-xs text-rose-900 flex items-center gap-1.5">
+                            <AlertTriangle className="w-4 h-4 text-rose-600 shrink-0" />
+                            <span>SLA समय-सीमा उल्लंघन: {ticket.ticket_number}</span>
+                          </span>
+                          <span className="text-[10px] font-mono font-bold text-rose-700 bg-rose-200/80 px-2 py-0.5 rounded-full">
+                            वार्ड {ticket.ward_number}
+                          </span>
                         </div>
-                      ))
+                        <p className="text-xs text-slate-800 font-semibold truncate">
+                          {ticket.category_name} &bull; {ticket.citizen_name}
+                        </p>
+                        <div className="flex items-center justify-between text-[11px] text-rose-700 pt-0.5">
+                          <span>समय-सीमा समाप्त: {formatDeadlineIST(ticket.sla_deadline)}</span>
+                          <span className="font-bold underline text-rose-800 hover:text-rose-900">जाँच करें (Inspect) ➔</span>
+                        </div>
+                      </div>
+                    ))}
+
+                    {/* 2. New Incoming Intakes Pending Verification */}
+                    {(notificationTab === 'ALL' || notificationTab === 'TASKS') && pendingIntakesList.map(intake => (
+                      <div 
+                        key={`intake-${intake.id}`}
+                        onClick={() => {
+                          setSelectedIntakeForVerification(intake);
+                          setShowNotificationsDropdown(false);
+                        }}
+                        className="p-3 rounded-2xl bg-amber-50/70 border border-amber-200/90 hover:bg-amber-100/70 transition-all cursor-pointer space-y-1.5 shadow-2xs pt-2.5"
+                      >
+                        <div className="flex items-center justify-between">
+                          <span className="font-extrabold text-xs text-amber-900 flex items-center gap-1.5">
+                            <Inbox className="w-4 h-4 text-amber-600 shrink-0" />
+                            <span>नई आवक शिकायत (सत्यापन शेष)</span>
+                          </span>
+                          <span className="text-[10px] font-bold text-amber-800 bg-amber-200/80 px-2 py-0.5 rounded-full">
+                            {intake.intake_channel === 'WHATSAPP' ? 'WhatsApp 24/7' : 'Helpline Call'}
+                          </span>
+                        </div>
+                        <p className="text-xs text-slate-800 font-semibold truncate">
+                          {intake.citizen_name} ({intake.citizen_phone}) &bull; वार्ड {intake.ward_number}
+                        </p>
+                        <p className="text-[11px] text-slate-600 line-clamp-1">
+                          {intake.problem_description}
+                        </p>
+                        <div className="flex items-center justify-between text-[11px] text-amber-800 pt-0.5">
+                          <span>प्राप्त समय: {intake.received_at}</span>
+                          <span className="font-bold underline text-amber-900 hover:text-amber-950">सत्यापित व स्वीकार करें ➔</span>
+                        </div>
+                      </div>
+                    ))}
+
+                    {/* 3. Citizen Confirmation Calls Pending (Step 2) */}
+                    {(notificationTab === 'ALL' || notificationTab === 'TASKS') && citizenCallPendingList.map(ticket => (
+                      <div 
+                        key={`confirm-${ticket.id}`}
+                        onClick={() => {
+                          setSelectedTicketForClosure(ticket);
+                          setShowNotificationsDropdown(false);
+                        }}
+                        className="p-3 rounded-2xl bg-purple-50/70 border border-purple-200/90 hover:bg-purple-100/70 transition-all cursor-pointer space-y-1.5 shadow-2xs pt-2.5"
+                      >
+                        <div className="flex items-center justify-between">
+                          <span className="font-extrabold text-xs text-purple-900 flex items-center gap-1.5">
+                            <Phone className="w-4 h-4 text-purple-600 shrink-0" />
+                            <span>नागरिक संतुष्टि पुष्टि कॉल शेष: {ticket.ticket_number}</span>
+                          </span>
+                          <span className="text-[10px] font-bold text-purple-800 bg-purple-200/80 px-2 py-0.5 rounded-full">
+                            स्टेप 2 कॉल
+                          </span>
+                        </div>
+                        <p className="text-xs text-slate-800 font-semibold truncate">
+                          {ticket.citizen_name} &bull; {ticket.citizen_phone}
+                        </p>
+                        <p className="text-[11px] text-purple-700">
+                          अधिकारी द्वारा कार्य पूर्ण। नागरिक से कॉल पर पुष्टि कर 2-Step क्लोजर पूर्ण करें।
+                        </p>
+                        <div className="flex items-center justify-between text-[11px] text-purple-800 pt-0.5">
+                          <span>वार्ड {ticket.ward_number}</span>
+                          <span className="font-bold underline text-purple-900 hover:text-purple-950">कॉल व संतुष्टि दर्ज करें ➔</span>
+                        </div>
+                      </div>
+                    ))}
+
+                    {/* 4. Active Officer Resolution Tickets (Step 1 Pending) */}
+                    {(notificationTab === 'TASKS') && officerPendingList.map(ticket => (
+                      <div 
+                        key={`officer-${ticket.id}`}
+                        onClick={() => {
+                          setActiveTab('TICKETS');
+                          setShowNotificationsDropdown(false);
+                        }}
+                        className="p-3 rounded-2xl bg-blue-50/70 border border-blue-200/90 hover:bg-blue-100/70 transition-all cursor-pointer space-y-1.5 shadow-2xs pt-2.5"
+                      >
+                        <div className="flex items-center justify-between">
+                          <span className="font-extrabold text-xs text-blue-900 flex items-center gap-1.5">
+                            <ClockAlert className="w-4 h-4 text-blue-600 shrink-0" />
+                            <span>अधिकारी कार्यवाही जारी: {ticket.ticket_number}</span>
+                          </span>
+                          <span className="text-[10px] font-bold text-blue-800 bg-blue-200/80 px-2 py-0.5 rounded-full">
+                            स्टेप 1
+                          </span>
+                        </div>
+                        <p className="text-xs text-slate-800 font-semibold truncate">
+                          {ticket.department_name} &bull; {ticket.citizen_name}
+                        </p>
+                        <div className="flex items-center justify-between text-[11px] text-blue-800 pt-0.5">
+                          <span>वार्ड {ticket.ward_number} • Target: {formatDeadlineIST(ticket.sla_deadline)}</span>
+                          <span className="font-bold underline text-blue-900 hover:text-blue-950">देखें ➔</span>
+                        </div>
+                      </div>
+                    ))}
+
+                    {/* 4. Recent Automated WhatsApp Logs */}
+                    {(notificationTab === 'LOGS') && recentLogsList.map(log => (
+                      <div 
+                        key={`log-${log.id}`}
+                        className="p-3 rounded-2xl bg-emerald-50/70 border border-emerald-200/90 space-y-1.5 shadow-2xs pt-2.5"
+                      >
+                        <div className="flex items-center justify-between">
+                          <span className="font-extrabold text-xs text-emerald-900 flex items-center gap-1.5">
+                            <MessageSquare className="w-4 h-4 text-emerald-600 shrink-0" />
+                            <span>WhatsApp संदेश: {log.ticket_number}</span>
+                          </span>
+                          <span className="text-[10px] font-bold text-emerald-800 bg-emerald-200/80 px-2 py-0.5 rounded-full font-mono">
+                            {log.recipient_type}
+                          </span>
+                        </div>
+                        <p className="text-xs text-slate-800 font-semibold truncate">
+                          {log.recipient_name} ({log.recipient_phone})
+                        </p>
+                        <p className="text-[11px] text-slate-600 line-clamp-2 bg-white/80 p-1.5 rounded-lg border border-emerald-100 font-mono text-[10px]">
+                          {log.message_content}
+                        </p>
+                        <div className="flex items-center justify-between text-[10px] text-emerald-700 pt-0.5">
+                          <span>स्टेटस: {log.status}</span>
+                          <span>{log.sent_at}</span>
+                        </div>
+                      </div>
+                    ))}
+
+                    {/* Empty State */}
+                    {((notificationTab === 'ALL' && totalActionableCount === 0) ||
+                      (notificationTab === 'TASKS' && pendingIntakesList.length === 0 && citizenCallPendingList.length === 0) ||
+                      (notificationTab === 'SLA' && overdueTicketsList.length === 0) ||
+                      (notificationTab === 'LOGS' && recentLogsList.length === 0)) && (
+                      <div className="py-8 text-center text-slate-400 space-y-2">
+                        <CheckCircle2 className="w-10 h-10 mx-auto text-emerald-500" />
+                        <p className="text-xs font-bold text-slate-700">कोई लंबित कार्य नहीं (All Clear)</p>
+                        <p className="text-[11px] text-slate-400">सभी आवक शिकायतें, सत्यापन व SLA समय-सीमाएं सामान्य हैं।</p>
+                      </div>
                     )}
                   </div>
 
-                  {kpis.overdueComplaints > 0 && (
+                  {/* Panel Quick Actions Footer */}
+                  <div className="bg-slate-50 border-t border-slate-100 p-2.5 flex items-center justify-between text-xs gap-2">
+                    <button
+                      type="button"
+                      onClick={() => {
+                        setActiveTab('CLOSED');
+                        setSelectedStatus('CLOSED');
+                        setShowNotificationsDropdown(false);
+                      }}
+                      className="flex-1 py-1.5 px-2 rounded-xl bg-emerald-50 hover:bg-emerald-100 text-emerald-800 border border-emerald-200 font-bold text-[11px] text-center transition-colors cursor-pointer"
+                    >
+                      पूर्ण शिकायतें ({kpis.confirmedResolvedClosed})
+                    </button>
+                    <button
+                      type="button"
+                      onClick={() => {
+                        setActiveTab('TICKETS');
+                        setSelectedStatus('ALL');
+                        setShowNotificationsDropdown(false);
+                      }}
+                      className="flex-1 py-1.5 px-2 rounded-xl bg-blue-50 hover:bg-blue-100 text-blue-800 border border-blue-200 font-bold text-[11px] text-center transition-colors cursor-pointer"
+                    >
+                      सभी शिकायतें ({tickets.length})
+                    </button>
                     <button
                       type="button"
                       onClick={() => {
                         setActiveTab('SLA');
                         setShowNotificationsDropdown(false);
                       }}
-                      className="w-full py-2 rounded-xl bg-rose-600 hover:bg-rose-700 text-white font-bold text-xs text-center transition-colors shadow-xs cursor-pointer"
+                      className="flex-1 py-1.5 px-2 rounded-xl bg-rose-600 hover:bg-rose-700 text-white font-bold text-[11px] text-center transition-colors shadow-2xs cursor-pointer"
                     >
-                      Inspect All {kpis.overdueComplaints} Breached Complaints
+                      SLA Breached ({overdueTicketsList.length})
                     </button>
-                  )}
+                  </div>
                 </div>
               )}
             </div>
@@ -1559,10 +1794,10 @@ export const DashboardView = ({
                 <strong>रिपोर्ट प्रकार:</strong>{' '}
                 {activeTab === 'WARDS'
                   ? 'वार्ड पार्षद सूची (All 60 Wards Council Directory)'
-                  : activeTab === 'INTAKE'
-                  ? 'इंटेक कतार (Incoming Unverified Helpline & WhatsApp Intake Queue)'
                   : activeTab === 'CLOSED'
-                  ? 'सत्यापित निस्तारित शिकायतें (Two-Step Certified Closed Complaints)'
+                  ? 'प्रमाणित पूर्ण शिकायतें (Two-Step Certified Completed Complaints)'
+                  : activeTab === 'SLA'
+                  ? 'SLA समय-सीमा उल्लंघन रजिस्टर (SLA Breached Complaints Register)'
                   : activeTab === 'REJECTED'
                   ? 'अस्वीकृत शिकायत ऑडिट रजिस्टर (Rejected Complaints Audit Register)'
                   : 'शिकायत निवारण रजिस्टर (Complaints & Official Tickets Register)'}
@@ -1571,8 +1806,6 @@ export const DashboardView = ({
                 <strong>कुल रिकॉर्ड:</strong>{' '}
                 {activeTab === 'WARDS'
                   ? `${filteredWards.length} वार्ड पार्षद`
-                  : activeTab === 'INTAKE'
-                  ? `${filteredIntakes.length} इंटेक शिकायतें`
                   : activeTab === 'REJECTED'
                   ? `${allRejectedComplaints.length} अस्वीकृत शिकायतें`
                   : `${activeTab === 'CLOSED' ? tickets.filter(t => t.status === 'CLOSED').length : filteredTickets.length} शिकायतें`}
@@ -1759,18 +1992,18 @@ export const DashboardView = ({
               </div>
             </button>
 
-            {/* Card 4: Confirmed Closed */}
+            {/* Card 4: Completed Complaints (formerly Closed) */}
             <button
               type="button"
               onClick={() => {
                 setActiveTab('CLOSED');
                 setSelectedStatus('CLOSED');
               }}
-              title="Click to view certified closed complaints"
+              title="Click to view certified completed complaints"
               className="bg-white p-4 rounded-2xl border border-slate-200 shadow-2xs space-y-2 text-left hover:border-emerald-400 hover:shadow-md transition-all active:scale-[0.98] cursor-pointer"
             >
               <div className="flex items-center justify-between text-xs text-slate-500 font-medium">
-                <span>Confirmed Closed</span>
+                <span>Completed Complaints</span>
                 <CheckCircle2 className="w-4 h-4 text-emerald-600" />
               </div>
               <p className="text-2xl font-extrabold text-emerald-600 font-mono">
@@ -1782,24 +2015,24 @@ export const DashboardView = ({
               </div>
             </button>
 
-            {/* Card 5: Overdue Complaints */}
+            {/* Card 5: SLA Breached Complaints */}
             <button
               type="button"
               onClick={() => {
                 setActiveTab('SLA');
               }}
-              title="Click to inspect overdue SLA complaints"
+              title="Click to inspect SLA breached complaints"
               className="bg-white p-4 rounded-2xl border border-slate-200 shadow-2xs space-y-2 text-left hover:border-rose-400 hover:shadow-md transition-all active:scale-[0.98] cursor-pointer"
             >
               <div className="flex items-center justify-between text-xs text-slate-500 font-medium">
-                <span>Overdue Complaints</span>
-                <AlertCircle className="w-4 h-4 text-rose-600" />
+                <span>SLA Breached Complaints</span>
+                <AlertTriangle className="w-4 h-4 text-rose-600" />
               </div>
               <p className="text-2xl font-extrabold text-rose-600 font-mono">
                 {kpis.overdueComplaints}
               </p>
               <div className="text-[10px] text-rose-600 font-semibold flex items-center justify-between">
-                <span>SLA Breached</span>
+                <span>Critical Attention</span>
                 <span className="font-semibold text-[9px]">Inspect ➔</span>
               </div>
             </button>
@@ -1839,16 +2072,16 @@ export const DashboardView = ({
                 <div>
                   <h3 className="text-sm font-bold text-slate-900">
                     {activeTab === 'SLA' 
-                      ? 'SLA Breached & Urgent Escalations' 
+                      ? 'SLA Breached Complaints Register (समय-सीमा उल्लंघन)' 
                       : activeTab === 'CLOSED'
-                      ? 'Closed & Resolved Complaints'
+                      ? 'Completed Complaints (प्रमाणित पूर्ण शिकायतें)'
                       : 'Complaints & Official Tickets Management'}
                   </h3>
                   <p className="text-xs text-slate-500">
                     {activeTab === 'SLA'
-                      ? `Showing ${activeTicketsList.length} critical complaints requiring immediate action`
+                      ? `Showing ${activeTicketsList.length} complaints exceeding standard resolution SLA deadlines`
                       : activeTab === 'CLOSED'
-                      ? `Showing ${activeTicketsList.length} two-step certified closed complaints`
+                      ? `Showing ${activeTicketsList.length} two-step certified completed complaints`
                       : `Showing ${activeTicketsList.length} complaints across Chittorgarh Nagar Parishad`}
                   </p>
                 </div>
