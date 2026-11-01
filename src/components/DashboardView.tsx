@@ -53,7 +53,8 @@ import {
   XCircle,
   Menu,
   X,
-  RotateCcw
+  RotateCcw,
+  Trash2
 } from 'lucide-react';
 
 interface DashboardViewProps {
@@ -73,6 +74,7 @@ interface DashboardViewProps {
   onUpdateWard?: (ward: Ward) => Promise<void> | void;
   onUpdateDepartment?: (dept: Department) => Promise<void> | void;
   onAddDepartment?: (dept: Department) => Promise<void> | void;
+  onDeleteDepartment?: (deptId: string) => Promise<void> | void;
 }
 
 const TAB_HEADER_METADATA: Record<string, { title: string; hindi: string; icon: any; bg: string }> = {
@@ -154,7 +156,8 @@ export const DashboardView = ({
   onAddNotification,
   onUpdateWard,
   onUpdateDepartment,
-  onAddDepartment
+  onAddDepartment,
+  onDeleteDepartment
 }: DashboardViewProps) => {
 
   const [activeTab, setActiveTab] = useState<'DASHBOARD' | 'INTAKE' | 'TICKETS' | 'CLOSED' | 'REJECTED' | 'SLA' | 'WARDS' | 'DEPARTMENTS' | 'SETTINGS' | 'SUPPORT'>('DASHBOARD');
@@ -249,6 +252,55 @@ export const DashboardView = ({
         ? `Department "${dept.name}" details have been saved.`
         : `New department "${dept.name}" has been added.`,
       confirmText: 'OK'
+    });
+  };
+
+  const handleConfirmDeleteDepartment = (dept: Department) => {
+    const linkedTicketsCount = tickets.filter(
+      t => t.department_name === dept.name
+    ).length;
+
+    setStatusModalConfig({
+      isOpen: true,
+      type: 'warning',
+      title: 'विभाग स्थायी रूप से हटाएं (Delete Department)?',
+      subtitle: `क्या आप "${dept.name}" (${dept.code}) को सेंट्रल डेटाबेस से हमेशा के लिए हटाना चाहते हैं?`,
+      details: linkedTicketsCount > 0 ? [
+        `⚠️ इस विभाग से कुल ${linkedTicketsCount} शिकायतें (Tickets) जुड़ी हुई हैं।`,
+        'डिपार्टमेंट हटाने पर ये शिकायतें स्वतः डिफ़ॉल्ट विभाग (Sanitation & Garbage Collection) पर री-असाइन हो जाएंगी।',
+        'यह कार्रवाई स्थायी है और इसे वापस नहीं किया जा सकता।'
+      ] : [
+        `विभाग कोड: ${dept.code}`,
+        `जिम्मेदार नोडल अधिकारी: ${dept.head_officer_name}`,
+        'यह विभाग सेंट्रल डेटाबेस से स्थायी रूप से हटा दिया जाएगा।'
+      ],
+      showCancel: true,
+      confirmText: 'हाँ, स्थायी रूप से हटाएं (Delete)',
+      cancelText: 'रद्द करें (Cancel)',
+      onConfirm: async () => {
+        try {
+          if (onDeleteDepartment) {
+            await onDeleteDepartment(dept.id);
+          }
+          setIsDepartmentModalOpen(false);
+          setEditingDepartment(null);
+          setStatusModalConfig({
+            isOpen: true,
+            type: 'success',
+            title: 'विभाग हटाया गया (Deleted Successfully)',
+            subtitle: `विभाग "${dept.name}" सेंट्रल डेटाबेस से सफलतापूर्वक हटा दिया गया है।`,
+            confirmText: 'ठीक है (OK)'
+          });
+        } catch (err: any) {
+          setStatusModalConfig({
+            isOpen: true,
+            type: 'error',
+            title: 'हटाने में त्रुटि (Failed to Delete)',
+            subtitle: err?.message || 'डेटाबेस से विभाग हटाने में त्रुटि आई।',
+            confirmText: 'ठीक है (OK)'
+          });
+        }
+      }
     });
   };
 
@@ -2904,7 +2956,7 @@ export const DashboardView = ({
                     className="px-4 py-1.5 rounded-xl bg-blue-600 hover:bg-blue-700 text-white font-bold text-xs flex items-center gap-1.5 shadow-md transition-all cursor-pointer active:scale-95"
                   >
                     <Plus className="w-3.5 h-3.5 stroke-[2.5]" />
-                    <span>+ Add Department</span>
+                    <span>Add Department</span>
                   </button>
                 </div>
               </div>
@@ -2918,7 +2970,7 @@ export const DashboardView = ({
                       <th className="px-4 py-3.5 border-r border-slate-400 w-[150px] min-w-[150px] whitespace-nowrap">Standard SLA</th>
                       <th className="px-4 py-3.5 border-r border-slate-400 w-[190px] min-w-[190px]">Nodal Officer</th>
                       <th className="px-4 py-3.5 border-r border-slate-400 w-[170px] min-w-[170px] whitespace-nowrap">Officer Phone</th>
-                      <th className="px-4 py-3.5 text-right w-[140px] min-w-[140px] whitespace-nowrap">Actions</th>
+                      <th className="px-4 py-3.5 text-right w-[170px] min-w-[170px] whitespace-nowrap">Actions</th>
                     </tr>
                   </thead>
                   <tbody className="divide-y divide-slate-400 bg-white">
@@ -2953,18 +3005,29 @@ export const DashboardView = ({
                             </a>
                           </td>
                           <td className="px-4 py-3.5 align-middle text-right whitespace-nowrap">
-                            <button
-                              type="button"
-                              onClick={() => {
-                                setEditingDepartment(dept);
-                                setIsDepartmentModalOpen(true);
-                              }}
-                              className="px-3 py-1.5 rounded-lg bg-blue-50 hover:bg-blue-100 text-blue-700 border border-blue-200 text-xs font-semibold inline-flex items-center gap-1.5 transition-all active:scale-95 cursor-pointer shadow-2xs"
-                              title={`Edit ${dept.name}`}
-                            >
-                              <Pencil className="w-3.5 h-3.5" />
-                              <span>Edit Dept</span>
-                            </button>
+                            <div className="flex items-center justify-end gap-1.5">
+                              <button
+                                type="button"
+                                onClick={() => {
+                                  setEditingDepartment(dept);
+                                  setIsDepartmentModalOpen(true);
+                                }}
+                                className="px-2.5 py-1.5 rounded-lg bg-blue-50 hover:bg-blue-100 text-blue-700 border border-blue-200 text-xs font-semibold inline-flex items-center gap-1.5 transition-all active:scale-95 cursor-pointer shadow-2xs"
+                                title={`Edit ${dept.name}`}
+                              >
+                                <Pencil className="w-3.5 h-3.5" />
+                                <span>Edit</span>
+                              </button>
+                              <button
+                                type="button"
+                                onClick={() => handleConfirmDeleteDepartment(dept)}
+                                className="px-2.5 py-1.5 rounded-lg bg-rose-50 hover:bg-rose-100 text-rose-700 border border-rose-200 text-xs font-semibold inline-flex items-center gap-1.5 transition-all active:scale-95 cursor-pointer shadow-2xs"
+                                title={`Delete ${dept.name} permanently`}
+                              >
+                                <Trash2 className="w-3.5 h-3.5 text-rose-600" />
+                                <span>Delete</span>
+                              </button>
+                            </div>
                           </td>
                         </tr>
                       ))
@@ -3042,7 +3105,7 @@ export const DashboardView = ({
                     className="px-4 py-2 rounded-xl bg-blue-600 hover:bg-blue-700 text-white font-bold text-xs inline-flex items-center gap-1.5 shadow-sm transition-all active:scale-95 cursor-pointer"
                   >
                     <Plus className="w-4 h-4" />
-                    <span>+ Add New Department</span>
+                    <span>Add New Department</span>
                   </button>
                 </div>
 
@@ -3055,7 +3118,7 @@ export const DashboardView = ({
                         <th className="px-4 py-3.5 border-r border-slate-200 w-48">Configured SLA Deadline</th>
                         <th className="px-4 py-3.5 border-r border-slate-200 w-56">Concerned Officer (जिम्मेदार अधिकारी)</th>
                         <th className="px-4 py-3.5 border-r border-slate-200 w-44">Officer Phone</th>
-                        <th className="px-4 py-3.5 text-right w-40">Actions</th>
+                        <th className="px-4 py-3.5 text-right w-52">Actions</th>
                       </tr>
                     </thead>
                     <tbody className="divide-y divide-slate-200 bg-white">
@@ -3091,18 +3154,29 @@ export const DashboardView = ({
                             </a>
                           </td>
                           <td className="px-4 py-3.5 text-right whitespace-nowrap">
-                            <button
-                              type="button"
-                              onClick={() => {
-                                setEditingDepartment(dept);
-                                setIsDepartmentModalOpen(true);
-                              }}
-                              className="px-3 py-1.5 rounded-lg bg-slate-100 hover:bg-blue-600 hover:text-white text-slate-700 border border-slate-200 text-xs font-semibold inline-flex items-center gap-1.5 transition-all active:scale-95 cursor-pointer shadow-2xs"
-                              title={`Edit SLA and Officer for ${dept.name}`}
-                            >
-                              <Pencil className="w-3.5 h-3.5" />
-                              <span>Edit SLA &amp; Officer</span>
-                            </button>
+                            <div className="flex items-center justify-end gap-1.5">
+                              <button
+                                type="button"
+                                onClick={() => {
+                                  setEditingDepartment(dept);
+                                  setIsDepartmentModalOpen(true);
+                                }}
+                                className="px-2.5 py-1.5 rounded-lg bg-slate-100 hover:bg-blue-600 hover:text-white text-slate-700 border border-slate-200 text-xs font-semibold inline-flex items-center gap-1.5 transition-all active:scale-95 cursor-pointer shadow-2xs"
+                                title={`Edit SLA and Officer for ${dept.name}`}
+                              >
+                                <Pencil className="w-3.5 h-3.5" />
+                                <span>Edit</span>
+                              </button>
+                              <button
+                                type="button"
+                                onClick={() => handleConfirmDeleteDepartment(dept)}
+                                className="px-2.5 py-1.5 rounded-lg bg-rose-50 hover:bg-rose-100 text-rose-700 border border-rose-200 text-xs font-semibold inline-flex items-center gap-1.5 transition-all active:scale-95 cursor-pointer shadow-2xs"
+                                title={`Delete ${dept.name} permanently`}
+                              >
+                                <Trash2 className="w-3.5 h-3.5 text-rose-600" />
+                                <span>Delete</span>
+                              </button>
+                            </div>
                           </td>
                         </tr>
                       ))}
@@ -3378,6 +3452,12 @@ export const DashboardView = ({
           setEditingDepartment(null);
         }}
         onSave={handleSaveDepartment}
+        onDelete={(deptId) => {
+          const dept = departments.find(d => d.id === deptId) || editingDepartment;
+          if (dept) {
+            handleConfirmDeleteDepartment(dept);
+          }
+        }}
       />
 
       {/* Global Status / Confirmation / Success Modal (AMPLR Health Style) */}

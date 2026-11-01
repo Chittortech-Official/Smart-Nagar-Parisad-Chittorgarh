@@ -1,19 +1,21 @@
 import { useState, useEffect } from 'react';
 import type { Department } from '../types';
-import { X, Save, Building2, UserCheck, Phone, Clock, PlusCircle, Loader2 } from 'lucide-react';
+import { X, Save, Building2, UserCheck, Phone, Clock, PlusCircle, Loader2, Trash2 } from 'lucide-react';
 
 interface DepartmentModalProps {
   isOpen: boolean;
   onClose: () => void;
   department: Department | null; // null = Add mode, present = Edit mode
   onSave: (dept: Department) => Promise<void> | void;
+  onDelete?: (deptId: string) => Promise<void> | void;
 }
 
 export const DepartmentModal = ({
   isOpen,
   onClose,
   department,
-  onSave
+  onSave,
+  onDelete
 }: DepartmentModalProps) => {
   const isEdit = Boolean(department);
   const [formData, setFormData] = useState<Department>({
@@ -232,32 +234,53 @@ export const DepartmentModal = ({
           </div>
 
           {/* Actions */}
-          <div className="pt-3 border-t border-slate-100 flex items-center justify-end gap-3">
-            <button
-              type="button"
-              disabled={isSaving}
-              onClick={onClose}
-              className="px-4 py-2 rounded-xl border border-slate-200 text-xs font-semibold text-slate-600 hover:bg-slate-50 transition-colors cursor-pointer"
-            >
-              रद्द करें (Cancel)
-            </button>
-            <button
-              type="submit"
-              disabled={isSaving}
-              className="px-6 py-2.5 rounded-xl bg-blue-600 hover:bg-blue-700 active:scale-95 text-white text-xs font-bold flex items-center gap-2 shadow-md transition-all cursor-pointer disabled:opacity-50"
-            >
-              {isSaving ? (
-                <>
-                  <Loader2 className="w-4 h-4 animate-spin" />
-                  <span>सहेजा जा रहा है...</span>
-                </>
-              ) : (
-                <>
-                  <Save className="w-4 h-4" />
-                  <span>{isEdit ? 'सहेजें (Save Changes)' : 'विभाग जोड़ें (Add Department)'}</span>
-                </>
-              )}
-            </button>
+          <div className="pt-3 border-t border-slate-100 flex items-center justify-between gap-3">
+            {isEdit && onDelete ? (
+              <button
+                type="button"
+                disabled={isSaving}
+                onClick={() => {
+                  if (department) {
+                    onDelete(department.id);
+                  }
+                }}
+                className="px-3.5 py-2 rounded-xl border border-rose-200 bg-rose-50 hover:bg-rose-100 text-rose-700 text-xs font-bold inline-flex items-center gap-1.5 transition-all active:scale-95 cursor-pointer disabled:opacity-50"
+                title="विभाग को स्थायी रूप से हटाएं"
+              >
+                <Trash2 className="w-3.5 h-3.5 text-rose-600" />
+                <span>विभाग हटाएं (Delete)</span>
+              </button>
+            ) : (
+              <div />
+            )}
+
+            <div className="flex items-center gap-2.5">
+              <button
+                type="button"
+                disabled={isSaving}
+                onClick={onClose}
+                className="px-4 py-2 rounded-xl border border-slate-200 text-xs font-semibold text-slate-600 hover:bg-slate-50 transition-colors cursor-pointer"
+              >
+                रद्द करें (Cancel)
+              </button>
+              <button
+                type="submit"
+                disabled={isSaving}
+                className="px-6 py-2.5 rounded-xl bg-blue-600 hover:bg-blue-700 active:scale-95 text-white text-xs font-bold flex items-center gap-2 shadow-md transition-all cursor-pointer disabled:opacity-50"
+              >
+                {isSaving ? (
+                  <>
+                    <Loader2 className="w-4 h-4 animate-spin" />
+                    <span>सहेजा जा रहा है...</span>
+                  </>
+                ) : (
+                  <>
+                    <Save className="w-4 h-4" />
+                    <span>{isEdit ? 'सहेजें (Save Changes)' : 'विभाग जोड़ें (Add Department)'}</span>
+                  </>
+                )}
+              </button>
+            </div>
           </div>
         </form>
       </div>

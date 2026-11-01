@@ -511,6 +511,32 @@ export function App() {
     }
   };
 
+  const handleDeleteDepartment = async (departmentId: string) => {
+    // 1. Remove from local state & localStorage immediately
+    setDepartments(prev => prev.filter(d => d.id !== departmentId));
+
+    // 2. Sync to Supabase Central Database
+    if (supabase) {
+      try {
+        const fallbackDept = departments.find(d => d.id !== departmentId);
+        if (fallbackDept) {
+          await supabase.from('tickets').update({ department_id: fallbackDept.id }).eq('department_id', departmentId);
+          await supabase.from('complaint_categories').update({ department_id: fallbackDept.id }).eq('department_id', departmentId);
+          await supabase.from('user_profiles').update({ department_id: fallbackDept.id }).eq('department_id', departmentId);
+        }
+
+        const { error } = await supabase.from('departments').delete().eq('id', departmentId);
+        if (error) {
+          console.error("Supabase department delete error:", error);
+          throw error;
+        }
+      } catch (err) {
+        console.warn("Supabase department delete:", err);
+        throw err;
+      }
+    }
+  };
+
   return (
     <SecurityDeviceGuard>
       <div className="w-full min-h-screen bg-slate-100 antialiased">
@@ -534,6 +560,7 @@ export function App() {
             onUpdateWard={handleUpdateWard}
             onUpdateDepartment={handleUpdateDepartment}
             onAddDepartment={handleAddDepartment}
+            onDeleteDepartment={handleDeleteDepartment}
           />
         )}
       </div>
