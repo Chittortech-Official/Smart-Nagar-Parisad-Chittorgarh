@@ -115,71 +115,124 @@ export function App() {
   }, [currentUser]);
 
   // Attempt live sync with Supabase
-  useEffect(() => {
+  const fetchLiveDbData = async () => {
     if (!isSupabaseConfigured || !supabase) return;
-
     const activeClient = supabase;
-    const fetchLiveDbData = async () => {
-      try {
-        const { data: wardsData } = await activeClient
-          .from('wards')
-          .select('*')
-          .order('ward_number', { ascending: true });
-        if (wardsData && wardsData.length > 0) {
-          setWards([...wardsData].sort((a, b) => a.ward_number - b.ward_number));
-        }
-
-        const { data: deptsData } = await activeClient.from('departments').select('*');
-        if (deptsData && deptsData.length > 0) {
-          setDepartments(deptsData);
-        }
-
-        // Live sync tickets from Supabase with CGR-0001 sequence
-        const { data: ticketsData } = await activeClient
-          .from('tickets')
-          .select(`
-            *,
-            departments ( name, head_officer_name, head_officer_phone ),
-            complaint_categories ( name )
-          `)
-          .order('ticket_number', { ascending: false });
-
-        if (ticketsData && ticketsData.length > 0) {
-          const mappedTickets: Ticket[] = ticketsData.map((row: any) => ({
-            id: row.id,
-            ticket_number: row.ticket_number,
-            citizen_name: row.citizen_name,
-            citizen_phone: row.citizen_phone,
-            ward_number: row.ward_number,
-            address: row.address,
-            landmark: row.landmark || '',
-            department_name: row.departments?.name || 'Sanitation & Garbage Collection',
-            category_name: row.complaint_categories?.name || 'Municipal General Complaint',
-            assigned_officer_name: row.assigned_officer_name || row.departments?.head_officer_name || 'Ramesh Sharma',
-            assigned_officer_phone: row.assigned_officer_phone || row.departments?.head_officer_phone || '+91 94140 00101',
-            problem_description: row.problem_description,
-            status: row.status,
-            forwarding_option: row.forwarding_option || 'NODAL_OFFICER_ONLY',
-            sla_hours: row.sla_hours,
-            sla_deadline: formatDeadlineIST(row.sla_deadline),
-            sla_deadline_iso: row.sla_deadline,
-            is_overdue: row.is_overdue,
-            is_escalated: row.is_escalated,
-            escalation_notes: row.escalation_notes,
-            registration_time: row.registration_time ? new Date(row.registration_time).toLocaleString('en-IN', { hour: '2-digit', minute: '2-digit', day: '2-digit', month: '2-digit' }) : 'Recently',
-            resolution_time: row.resolution_time,
-            closed_at: row.closed_at,
-            authority_confirmed: row.status === 'RESOLVED_AWAITING_CITIZEN' || row.status === 'CLOSED',
-            citizen_satisfied: row.status === 'CLOSED'
-          }));
-          setTickets(mappedTickets);
-        }
-      } catch (err) {
-        console.warn("Supabase live sync in progress or local mode active:", err);
+    try {
+      const { data: wardsData } = await activeClient
+        .from('wards')
+        .select('*')
+        .order('ward_number', { ascending: true });
+      if (wardsData && wardsData.length > 0) {
+        setWards([...wardsData].sort((a, b) => a.ward_number - b.ward_number));
       }
-    };
 
+      const { data: deptsData } = await activeClient.from('departments').select('*');
+      if (deptsData && deptsData.length > 0) {
+        setDepartments(deptsData);
+      }
+
+      // Live sync tickets from Supabase with CGR-0001 sequence
+      const { data: ticketsData, error: ticketsErr } = await activeClient
+        .from('tickets')
+        .select(`
+          *,
+          departments ( name, head_officer_name, head_officer_phone ),
+          complaint_categories ( name )
+        `)
+        .order('ticket_number', { ascending: false });
+
+      if (!ticketsErr && Array.isArray(ticketsData)) {
+        const mappedTickets: Ticket[] = ticketsData.map((row: any) => ({
+          id: row.id,
+          ticket_number: row.ticket_number,
+          citizen_name: row.citizen_name,
+          citizen_phone: row.citizen_phone,
+          ward_number: row.ward_number,
+          address: row.address,
+          landmark: row.landmark || '',
+          department_name: row.departments?.name || 'Sanitation & Garbage Collection',
+          category_name: row.complaint_categories?.name || 'Municipal General Complaint',
+          assigned_officer_name: row.assigned_officer_name || row.departments?.head_officer_name || 'Ramesh Sharma',
+          assigned_officer_phone: row.assigned_officer_phone || row.departments?.head_officer_phone || '+91 94140 00101',
+          problem_description: row.problem_description,
+          status: row.status,
+          forwarding_option: row.forwarding_option || 'NODAL_OFFICER_ONLY',
+          sla_hours: row.sla_hours,
+          sla_deadline: formatDeadlineIST(row.sla_deadline),
+          sla_deadline_iso: row.sla_deadline,
+          is_overdue: row.is_overdue,
+          is_escalated: row.is_escalated,
+          escalation_notes: row.escalation_notes,
+          registration_time: row.registration_time ? new Date(row.registration_time).toLocaleString('en-IN', { hour: '2-digit', minute: '2-digit', day: '2-digit', month: '2-digit' }) : 'Recently',
+          resolution_time: row.resolution_time,
+          closed_at: row.closed_at,
+          authority_confirmed: row.status === 'RESOLVED_AWAITING_CITIZEN' || row.status === 'CLOSED',
+          citizen_satisfied: row.status === 'CLOSED'
+        }));
+        setTickets(mappedTickets);
+        localStorage.setItem('snp_chittorgarh_tickets_cgr_v1', JSON.stringify(mappedTickets));
+        localStorage.setItem('snp_chittorgarh_tickets', JSON.stringify(mappedTickets));
+      }
+
+      // Live sync complaint intakes from Supabase
+      const { data: intakesData, error: intakesErr } = await activeClient
+        .from('complaint_intakes')
+        .select('*')
+        .order('received_at', { ascending: false });
+
+      if (!intakesErr && Array.isArray(intakesData)) {
+        const mappedIntakes: IntakeComplaint[] = intakesData.map((row: any) => ({
+          id: row.id,
+          intake_channel: row.intake_channel,
+          citizen_name: row.citizen_name,
+          citizen_phone: row.citizen_phone,
+          ward_number: row.ward_number,
+          address: row.address,
+          landmark: row.landmark || '',
+          category_name: row.category_name || 'Municipal General Complaint',
+          department_name: row.department_name || 'Sanitation & Garbage Collection',
+          problem_description: row.problem_description,
+          status: row.status,
+          rejection_reason: row.rejection_reason,
+          is_after_hours: row.is_after_hours,
+          received_at: row.received_at ? new Date(row.received_at).toLocaleTimeString('en-US', { hour: '2-digit', minute: '2-digit' }) : 'Recently'
+        }));
+        setIntakes(mappedIntakes);
+        localStorage.setItem('snp_chittorgarh_intakes', JSON.stringify(mappedIntakes));
+      }
+    } catch (err) {
+      console.warn("Supabase live sync in progress or local mode active:", err);
+    }
+  };
+
+  useEffect(() => {
     fetchLiveDbData();
+
+    if (supabase) {
+      const activeClient = supabase;
+      const channel = activeClient
+        .channel('realtime-tickets-sync')
+        .on(
+          'postgres_changes',
+          { event: '*', schema: 'public', table: 'tickets' },
+          () => {
+            fetchLiveDbData();
+          }
+        )
+        .on(
+          'postgres_changes',
+          { event: '*', schema: 'public', table: 'complaint_intakes' },
+          () => {
+            fetchLiveDbData();
+          }
+        )
+        .subscribe();
+
+      return () => {
+        activeClient.removeChannel(channel);
+      };
+    }
   }, []);
 
   // Continuous real-time SLA Breach Checker (every 1 second)
@@ -561,6 +614,7 @@ export function App() {
             onUpdateDepartment={handleUpdateDepartment}
             onAddDepartment={handleAddDepartment}
             onDeleteDepartment={handleDeleteDepartment}
+            onRefreshData={fetchLiveDbData}
           />
         )}
       </div>

@@ -74,6 +74,7 @@ interface DashboardViewProps {
   onUpdateDepartment?: (dept: Department) => Promise<void> | void;
   onAddDepartment?: (dept: Department) => Promise<void> | void;
   onDeleteDepartment?: (deptId: string) => Promise<void> | void;
+  onRefreshData?: () => Promise<void> | void;
 }
 
 const TAB_HEADER_METADATA: Record<string, { title: string; hindi: string; icon: any; bg: string }> = {
@@ -156,7 +157,8 @@ export const DashboardView = ({
   onUpdateWard,
   onUpdateDepartment,
   onAddDepartment,
-  onDeleteDepartment
+  onDeleteDepartment,
+  onRefreshData
 }: DashboardViewProps) => {
 
   const [activeTab, setActiveTab] = useState<'DASHBOARD' | 'INTAKE' | 'TICKETS' | 'CLOSED' | 'REJECTED' | 'SLA' | 'WARDS' | 'DEPARTMENTS' | 'SETTINGS' | 'SUPPORT'>('DASHBOARD');
@@ -1433,7 +1435,10 @@ export const DashboardView = ({
             {/* Quick action buttons */}
             <button
               type="button"
-              onClick={() => {
+              onClick={async () => {
+                if (onRefreshData) {
+                  await onRefreshData();
+                }
                 setStatusModalConfig({
                   isOpen: true,
                   type: 'success',
@@ -1442,7 +1447,7 @@ export const DashboardView = ({
                   confirmText: 'OK'
                 });
               }}
-              title="Refresh Data"
+              title="Refresh Data from Central Database"
               className="p-2 rounded-xl border border-sky-200 bg-white/95 text-sky-700 hover:text-sky-900 hover:bg-white transition-all cursor-pointer shrink-0 shadow-2xs"
             >
               <RefreshCw className="w-4 h-4" />
