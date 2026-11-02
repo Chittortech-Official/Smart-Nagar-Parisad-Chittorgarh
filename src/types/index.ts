@@ -93,6 +93,8 @@ export interface Ticket {
   authority_notes?: string;
   citizen_satisfied?: boolean;
   citizen_feedback?: string;
+  reopen_count?: number;
+  is_reopened?: boolean;
 }
 
 export interface NotificationLog {

@@ -168,7 +168,9 @@ export function App() {
           resolution_time: row.resolution_time,
           closed_at: row.closed_at,
           authority_confirmed: row.status === 'RESOLVED_AWAITING_CITIZEN' || row.status === 'CLOSED',
-          citizen_satisfied: row.status === 'CLOSED'
+          citizen_satisfied: row.status === 'CLOSED',
+          reopen_count: row.reopen_count ?? (row.status === 'REOPENED' ? 1 : 0),
+          is_reopened: row.is_reopened ?? (row.status === 'REOPENED')
         }));
         setTickets(mappedTickets);
         localStorage.setItem('snp_chittorgarh_tickets_cgr_v1', JSON.stringify(mappedTickets));

@@ -786,7 +786,9 @@ export const DashboardView = ({
         citizen_satisfied: true,
         citizen_feedback: feedback,
         status: 'CLOSED',
-        closed_at: new Date().toLocaleTimeString('en-US', { hour: '2-digit', minute: '2-digit' })
+        closed_at: new Date().toLocaleTimeString('en-US', { hour: '2-digit', minute: '2-digit' }),
+        reopen_count: target.reopen_count ?? (target.status === 'REOPENED' ? 1 : 0),
+        is_reopened: target.is_reopened ?? (target.status === 'REOPENED')
       };
       onUpdateTicket(updated);
 
@@ -821,23 +823,33 @@ export const DashboardView = ({
         confirmText: 'OK'
       });
     } else {
-      // Citizen Unsatisfied: Reopen ticket and alert officer
+      // Citizen Unsatisfied: Reopen ticket and alert officer (Strict 1-Time Reopen Rule)
+      const currentReopenCount = target.reopen_count || (target.status === 'REOPENED' || target.is_reopened ? 1 : 0);
+      if (currentReopenCount >= 1 || target.is_reopened) {
+        alert("यह शिकायत पहले ही 1 बार री-ओपन हो चुकी है। नियमानुसार इसे दोबारा री-ओपन नहीं किया जा सकता, अब केवल क्लोज किया जा सकता है।");
+        setSelectedTicketForClosure(null);
+        return;
+      }
+
       const updated: Ticket = {
         ...target,
         citizen_satisfied: false,
         citizen_feedback: feedback,
         status: 'REOPENED',
-        authority_confirmed: false // reset for re-verification
+        authority_confirmed: false, // reset for re-verification
+        reopen_count: currentReopenCount + 1,
+        is_reopened: true
       };
       onUpdateTicket(updated);
       setStatusModalConfig({
         isOpen: true,
         type: 'warning',
         title: 'Reopened!',
-        subtitle: `Ticket ${target.ticket_number} has been returned to officer ${target.assigned_officer_name} for priority resolution.`,
+        subtitle: `Ticket ${target.ticket_number} has been returned to officer ${target.assigned_officer_name} for priority resolution. (Note: 1st & final reopen cycle — subsequent resolution will be final closure).`,
         details: [
           `Ticket Number: ${target.ticket_number}`,
-          `Citizen Feedback: ${feedback || 'Reported Unresolved'}`
+          `Citizen Feedback: ${feedback || 'Reported Unresolved'}`,
+          `Reopen Status: 1st & Final Cycle`
         ],
         confirmText: 'OK'
       });

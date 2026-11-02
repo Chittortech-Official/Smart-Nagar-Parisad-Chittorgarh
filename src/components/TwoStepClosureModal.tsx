@@ -8,7 +8,9 @@ import {
   CheckCircle2, 
   AlertTriangle, 
   MessageSquare, 
-  Send
+  Send,
+  Lock,
+  RotateCcw
 } from 'lucide-react';
 import { getWhatsAppUrl } from '../lib/whatsapp';
 
@@ -26,9 +28,19 @@ export const TwoStepClosureModal = ({
   onConfirmCitizen
 }: TwoStepClosureModalProps) => {
 
+  // 1-Time Reopen Rule: A complaint can only be reopened ONCE. Once reopened, it can only be closed.
+  const isAlreadyReopened = 
+    Boolean(ticket.is_reopened) || 
+    (ticket.reopen_count !== undefined && ticket.reopen_count >= 1) || 
+    ticket.status === 'REOPENED';
+
   const [activeStep, setActiveStep] = useState<1 | 2>(ticket.authority_confirmed ? 2 : 1);
   const [authorityNotes, setAuthorityNotes] = useState(ticket.authority_notes || 'Field team & responsible officer verified on-site completion.');
-  const [citizenFeedback, setCitizenFeedback] = useState('Citizen confirmed problem resolved satisfactorily on verification call.');
+  const [citizenFeedback, setCitizenFeedback] = useState(
+    isAlreadyReopened 
+      ? 'Citizen confirmed resolution upon re-verification call.' 
+      : 'Citizen confirmed problem resolved satisfactorily on verification call.'
+  );
   const [citizenSatisfied, setCitizenSatisfied] = useState<boolean | null>(true);
   const [callOutcome, setCallOutcome] = useState('ANSWERED_CONFIRMED');
 
@@ -79,6 +91,11 @@ export const TwoStepClosureModal = ({
 
   const handleStep2Submit = (e: React.FormEvent) => {
     e.preventDefault();
+    if (isAlreadyReopened && citizenSatisfied === false) {
+      alert("यह शिकायत पूर्व में 1 बार री-ओपन हो चुकी है। नियमानुसार इसे दोबारा री-ओपन नहीं किया जा सकता, केवल क्लोज किया जा सकता है।");
+      return;
+    }
+
     if (citizenSatisfied === null) {
       alert("Please record whether the citizen confirmed satisfaction or reported unresolved.");
       return;
@@ -241,11 +258,36 @@ export const TwoStepClosureModal = ({
                 </p>
               </div>
 
+              {/* 1-Time Reopen Rule Notice if ticket was already reopened */}
+              {isAlreadyReopened && (
+                <div className="p-3.5 bg-amber-50 border border-amber-200 rounded-xl flex items-start gap-3 text-xs text-amber-900 shadow-2xs">
+                  <RotateCcw className="w-4 h-4 text-amber-700 shrink-0 mt-0.5" />
+                  <div className="space-y-0.5">
+                    <div className="flex items-center gap-2">
+                      <span className="font-bold text-amber-950">नियम: अधिकतम 1 बार ही री-ओपन मान्य (1-Time Reopen Policy)</span>
+                      <span className="text-[10px] font-bold px-2 py-0.5 rounded-full bg-amber-200/80 text-amber-900 border border-amber-300 font-mono">
+                        FINAL RESOLUTION CYCLE
+                      </span>
+                    </div>
+                    <p className="text-[11px] text-amber-800 leading-relaxed">
+                      यह शिकायत (<strong className="font-mono">{ticket.ticket_number}</strong>) पूर्व में 1 बार री-ओपन हो चुकी है। नियमानुसार दोबारा री-ओपन नहीं की जा सकती, अब केवल नागरिक सत्यापन उपरांत <strong>स्थायी रूप से क्लोज (Closed)</strong> ही की जा सकती है।
+                    </p>
+                  </div>
+                </div>
+              )}
+
               {/* Citizen Response Selection */}
               <div className="space-y-2">
-                <label className="text-xs font-bold uppercase tracking-wider text-slate-700">
-                  Citizen Verification Result (Mandatory)
-                </label>
+                <div className="flex items-center justify-between">
+                  <label className="text-xs font-bold uppercase tracking-wider text-slate-700">
+                    Citizen Verification Result (Mandatory)
+                  </label>
+                  {isAlreadyReopened && (
+                    <span className="text-[11px] font-semibold text-rose-600 flex items-center gap-1">
+                      <Lock className="w-3 h-3" /> Reopen Disabled (1-Time Limit)
+                    </span>
+                  )}
+                </div>
                 <div className="grid grid-cols-2 gap-3">
                   <button
                     type="button"
@@ -261,27 +303,54 @@ export const TwoStepClosureModal = ({
                   >
                     <CheckCircle2 className={`w-5 h-5 shrink-0 ${citizenSatisfied === true ? 'text-emerald-600' : 'text-slate-400'}`} />
                     <div>
-                      <p className="font-bold text-xs text-slate-900">Citizen Confirmed Satisfied</p>
-                      <p className="text-[11px] text-slate-500 mt-0.5">Work verified complete. Ticket will be permanently CLOSED and Hindi WhatsApp sent.</p>
+                      <p className="font-bold text-xs text-slate-900">
+                        {isAlreadyReopened ? 'Citizen Confirmed Resolution (Final Close)' : 'Citizen Confirmed Satisfied'}
+                      </p>
+                      <p className="text-[11px] text-slate-500 mt-0.5">
+                        {isAlreadyReopened 
+                          ? 'Work re-verified complete. Ticket will be permanently CLOSED and Hindi WhatsApp sent.' 
+                          : 'Work verified complete. Ticket will be permanently CLOSED and Hindi WhatsApp sent.'}
+                      </p>
                     </div>
                   </button>
 
                   <button
                     type="button"
+                    disabled={isAlreadyReopened}
                     onClick={() => {
+                      if (isAlreadyReopened) return;
                       setCitizenSatisfied(false);
                       setCallOutcome('ANSWERED_NOT_RESOLVED');
                     }}
                     className={`p-3.5 rounded-xl border text-left transition-all flex items-start gap-3 ${
-                      citizenSatisfied === false
+                      isAlreadyReopened
+                        ? 'bg-slate-100/80 border-slate-200 opacity-60 cursor-not-allowed text-slate-400'
+                        : citizenSatisfied === false
                         ? 'bg-rose-50 border-rose-500 ring-2 ring-rose-500/30'
                         : 'border-slate-200 hover:bg-slate-50'
                     }`}
                   >
-                    <AlertTriangle className={`w-5 h-5 shrink-0 ${citizenSatisfied === false ? 'text-rose-600' : 'text-slate-400'}`} />
+                    {isAlreadyReopened ? (
+                      <Lock className="w-5 h-5 shrink-0 text-slate-400" />
+                    ) : (
+                      <AlertTriangle className={`w-5 h-5 shrink-0 ${citizenSatisfied === false ? 'text-rose-600' : 'text-slate-400'}`} />
+                    )}
                     <div>
-                      <p className="font-bold text-xs text-slate-900">Problem Still Unresolved</p>
-                      <p className="text-[11px] text-slate-500 mt-0.5">Citizen reports pending work. Ticket will be REOPENED and officer re-alerted.</p>
+                      <div className="flex items-center gap-1.5">
+                        <p className={`font-bold text-xs ${isAlreadyReopened ? 'text-slate-500 line-through' : 'text-slate-900'}`}>
+                          Problem Still Unresolved
+                        </p>
+                        {isAlreadyReopened && (
+                          <span className="text-[9px] font-bold px-1.5 py-0.2 rounded bg-slate-200 text-slate-700">
+                            LOCKED
+                          </span>
+                        )}
+                      </div>
+                      <p className="text-[11px] text-slate-500 mt-0.5">
+                        {isAlreadyReopened 
+                          ? '1 बार री-ओपन की सीमा पूरी हो चुकी है। अब दोबारा री-ओपन नहीं किया जा सकता।'
+                          : 'Citizen reports pending work. Ticket will be REOPENED and officer re-alerted.'}
+                      </p>
                     </div>
                   </button>
                 </div>
