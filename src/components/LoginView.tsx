@@ -24,38 +24,30 @@ interface LoginViewProps {
 }
 
 export const LoginView: React.FC<LoginViewProps> = ({ onLogin }) => {
-  const [selectedRole, setSelectedRole] = useState<UserRole>('PORTAL_MANAGER');
-  const [email, setEmail] = useState('portalmanager@chittorgarh.gov.in');
-  const [password, setPassword] = useState('••••••••••••');
+  const [email, setEmail] = useState('');
+  const [password, setPassword] = useState('');
   const [showPassword, setShowPassword] = useState(false);
   const [loginError, setLoginError] = useState<string | null>(null);
-
-  const handleRoleSelect = (role: UserRole) => {
-    setSelectedRole(role);
-    setLoginError(null);
-    if (role === 'PORTAL_MANAGER') {
-      setEmail('portalmanager@chittorgarh.gov.in');
-    } else {
-      setEmail('chairman@chittorgarh.gov.in');
-    }
-  };
 
   const handleSubmit = (e: React.FormEvent) => {
     e.preventDefault();
     setLoginError(null);
 
-    const cleanEmail = email.trim();
+    const cleanEmail = email.trim().toLowerCase();
     if (!cleanEmail || !/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(cleanEmail)) {
-      setLoginError("कृपया एक मान्य आधिकारिक ईमेल पता दर्ज करें (Valid email address required).");
+      setLoginError("कृपया एक मान्य आधिकारिक ईमेल पता दर्ज करें (Valid official email address required).");
       return;
     }
 
-    if (!password || password.length < 4) {
-      setLoginError("पासवर्ड कम से कम 4 अक्षरों का होना आवश्यक है (Password must be at least 4 characters).");
+    if (!password || password.trim().length === 0) {
+      setLoginError("कृपया पासवर्ड दर्ज करें (Password required).");
       return;
     }
 
-    onLogin(selectedRole, cleanEmail);
+    // Dynamic role resolution based on credentials:
+    // Both PORTAL_MANAGER and CHAIRMAN possess 100% identical full governance authority across all 60 wards.
+    const userRole: UserRole = cleanEmail.includes('chairman') ? 'CHAIRMAN' : 'PORTAL_MANAGER';
+    onLogin(userRole, cleanEmail);
   };
 
   // Official portal functionalities listed under Nagar Parishad Admin
@@ -208,60 +200,6 @@ export const LoginView: React.FC<LoginViewProps> = ({ onLogin }) => {
             </p>
           </div>
 
-          {/* Official Role Indicator: Portal Manager & Chairman (Only Two Roles) */}
-          <div className="space-y-2">
-            <div className="flex items-center justify-between">
-              <label className="text-[11px] font-bold uppercase tracking-wider text-slate-600">
-                Select Authorized Role
-              </label>
-              <span className="text-[10px] font-bold text-sky-700 uppercase tracking-wider bg-sky-100 px-2 py-0.5 rounded-full border border-sky-200">
-                Equal Permissions
-              </span>
-            </div>
-
-            <div className="grid grid-cols-2 gap-2">
-              <button
-                type="button"
-                onClick={() => handleRoleSelect('PORTAL_MANAGER')}
-                className={`flex items-center gap-2.5 p-2.5 rounded-xl border text-left transition-all ${
-                  selectedRole === 'PORTAL_MANAGER'
-                    ? 'border-sky-500 bg-sky-50/80 ring-2 ring-sky-500/20 text-slate-900 shadow-2xs'
-                    : 'border-slate-200 bg-white hover:bg-slate-50 text-slate-600'
-                }`}
-              >
-                <div className={`w-7 h-7 rounded-lg flex items-center justify-center font-bold text-xs shrink-0 ${
-                  selectedRole === 'PORTAL_MANAGER' ? 'bg-sky-600 text-white shadow-xs' : 'bg-slate-100 text-slate-600'
-                }`}>
-                  PM
-                </div>
-                <div className="min-w-0">
-                  <span className="text-xs font-bold block truncate">Portal Manager</span>
-                  <span className="text-[10px] text-slate-500 block">Full Governance</span>
-                </div>
-              </button>
-
-              <button
-                type="button"
-                onClick={() => handleRoleSelect('CHAIRMAN')}
-                className={`flex items-center gap-2.5 p-2.5 rounded-xl border text-left transition-all ${
-                  selectedRole === 'CHAIRMAN'
-                    ? 'border-sky-500 bg-sky-50/80 ring-2 ring-sky-500/20 text-slate-900 shadow-2xs'
-                    : 'border-slate-200 bg-white hover:bg-slate-50 text-slate-600'
-                }`}
-              >
-                <div className={`w-7 h-7 rounded-lg flex items-center justify-center font-bold text-xs shrink-0 ${
-                  selectedRole === 'CHAIRMAN' ? 'bg-sky-600 text-white shadow-xs' : 'bg-slate-100 text-slate-600'
-                }`}>
-                  CH
-                </div>
-                <div className="min-w-0">
-                  <span className="text-xs font-bold block truncate">Chairman</span>
-                  <span className="text-[10px] text-slate-500 block">Full Governance</span>
-                </div>
-              </button>
-            </div>
-          </div>
-
           {/* Login Form */}
           <form onSubmit={handleSubmit} className="space-y-4">
             {loginError && (
@@ -284,7 +222,8 @@ export const LoginView: React.FC<LoginViewProps> = ({ onLogin }) => {
                   value={email}
                   onChange={(e) => setEmail(e.target.value)}
                   required
-                  placeholder="portalmanager@chittorgarh.gov.in"
+                  autoComplete="username"
+                  placeholder="Enter your official email"
                   className="w-full pl-10 pr-4 py-2.5 rounded-xl border border-slate-200 bg-white text-slate-900 text-sm focus:outline-none focus:ring-2 focus:ring-sky-500 focus:border-sky-500 transition-all shadow-2xs"
                 />
               </div>
@@ -313,7 +252,8 @@ export const LoginView: React.FC<LoginViewProps> = ({ onLogin }) => {
                   value={password}
                   onChange={(e) => setPassword(e.target.value)}
                   required
-                  placeholder="••••••••••••"
+                  autoComplete="current-password"
+                  placeholder="Enter your password"
                   className="w-full pl-10 pr-10 py-2.5 rounded-xl border border-slate-200 bg-white text-slate-900 text-sm focus:outline-none focus:ring-2 focus:ring-sky-500 focus:border-sky-500 transition-all shadow-2xs"
                 />
                 <button
