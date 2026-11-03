@@ -183,3 +183,4 @@ FROM auth.users
 WHERE email IN ('chittortech@gmail.com', 'nagarparisad@gmail.com')
 ON CONFLICT (id) DO UPDATE 
 SET role = 'PORTAL_MANAGER', is_active = true, updated_at = now();
+
