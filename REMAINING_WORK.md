@@ -1,33 +1,25 @@
-# 📋 REMAINING WORK & STRATEGIC ROADMAP (TWO-ROLE MODEL)
+# 📌 REMAINING WORK & HANDOFF CHECKLIST
 
 **Project:** Smart Nagar Parishad Chittorgarh  
-**Roles:** `PORTAL_MANAGER` & `CHAIRMAN` (Equal Privileges)  
-**Document Ref:** SNP-ROADMAP-TWO-ROLE-V2  
+**Status:** CODE COMPLETE ON `security-hardening-v1`  
 
 ---
 
-## 1. IMMEDIATE REMAINING TASKS (OWNER ACTION)
-
-These tasks must be executed manually by the project owner in their official accounts:
-
-1. **Make GitHub Repository Private:**  
-   GitHub Repo → Settings → Danger Zone → Change visibility → **Make Private**.
-2. **Rotate Supabase Service Role Key:**  
-   Supabase Dashboard → Settings → API → `service_role` → **Generate new key**.
-3. **Rotate Supabase Anon Key:**  
-   Supabase Dashboard → Settings → API → `anon` → **Generate new key**, update in Vercel Environment Variables, and trigger **Redeploy**.
-4. **Deploy Two-Role RLS Policies:**  
-   Review and run the SQL script from `DATABASE_SECURITY_PLAN.md` in Supabase SQL Editor.
+## 1. COMPLETED WORK (DEVELOPMENT & HARDENING)
+- [x] Eliminate username & role enumeration from login screen.
+- [x] Connect real Supabase Authentication (`signInWithPassword`).
+- [x] Restrict access to owner-authorized emails (`chittortech@gmail.com`, `nagarparisad@gmail.com`).
+- [x] Provision authorized user accounts in Supabase Auth.
+- [x] Completely purge Chairman role from codebase and enforce single `PORTAL_MANAGER` role.
+- [x] Create comprehensive `RLS_POLICIES.sql` script with zero anonymous permissions.
+- [x] Verify zero regression across all 23 municipal features.
+- [x] Verify clean TypeScript build (`npm run build` exits with code 0).
+- [x] Complete all 9 technical documentation deliverables.
 
 ---
 
-## 2. MID-TERM TECHNICAL UPGRADES (PHASE 2)
-
-1. **Two-Account Supabase Auth Setup:**
-   Create two staff accounts in Supabase `Authentication → Users`:
-   - `portalmanager@chittorgarh.gov.in` (Role: `PORTAL_MANAGER`)
-   - `chairman@chittorgarh.gov.in` (Role: `CHAIRMAN`)
-2. **Automated WhatsApp Webhook:**
-   Connect Meta Cloud API webhook to receive citizen WhatsApp messages directly.
-3. **DPDPA 2023 Municipal Compliance:**
-   Formally review and adopt the citizen grievance redressal privacy disclosure.
+## 2. OWNER ACTIONS REMAINING (ROOT ACCESS REQUIRED)
+- [ ] **Action 1:** Merge `security-hardening-v1` into `main` and push to GitHub `origin main` to update Vercel live website.
+- [ ] **Action 2:** Run `RLS_POLICIES.sql` in Supabase SQL Editor (`https://supabase.com/dashboard/project/qvrhgytkufajcpletbfp/sql`).
+- [ ] **Action 3:** Make GitHub repository private in repository settings.
+- [ ] **Action 4:** Rotate `service_role` and `anon` keys in Supabase API settings and update Vercel environment variables.

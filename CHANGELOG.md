@@ -1,26 +1,21 @@
-# 📝 PROJECT CHANGELOG
+# 📝 CHANGELOG
 
-All notable changes made to the Smart Nagar Parishad Chittorgarh project are documented in this file.
+## [Security-Hardening-V1] - 03 November 2026
 
----
+### Added
+- Created `RLS_POLICIES.sql` providing comprehensive, strictly private Row Level Security policies for all 10 production tables.
+- Added protected `user_profiles` schema linked to `auth.users` with `is_authorized_manager()` security definer function.
+- Implemented strict 2-account email whitelist in frontend login and root session guard.
+- Added `Loader2` authentication spinner and security alert badges.
+- Configured HTTP security headers in `vercel.json` (`X-Frame-Options: DENY`, `X-Content-Type-Options: nosniff`).
 
-## [Branch: security-hardening-v1] — 2026-11-03
+### Changed
+- Replaced mock login with real Supabase Auth `signInWithPassword`.
+- Redesigned login screen to eliminate username and role enumeration (no role cards, no prefilled emails or passwords).
+- Purged all Chairman role references, types, banners, and policies from the entire codebase.
+- Enforced single `PORTAL_MANAGER` role across `types/index.ts`, `LoginView.tsx`, `App.tsx`, and `DashboardView.tsx`.
+- Updated all documentation files to reflect the strictly private, single-role Portal Manager architecture.
 
-### Refactored (Two-Role Architecture)
-- **Role System Streamlined to Exactly 2 Roles:**
-  - `PORTAL_MANAGER` and `CHAIRMAN` configured with **100% identical operational authority** across all 60 wards, complaints, departments, and audit logs.
-  - Purged all references to `SUPER_ADMIN`, `DEPARTMENTAL_OFFICER`, `WARD_COUNCILLOR`, and `CALL_OPERATOR` from `src/types/index.ts`, `LoginView.tsx`, and all documentation.
-- **Login View Updated (`src/components/LoginView.tsx`):**
-  - Added clean toggle buttons between `Portal Manager` and `Chairman`.
-  - Added email trimming and format regex validation.
-  - Added minimum password length check with user alert banner.
-- **Database Security Redesign (`DATABASE_SECURITY_PLAN.md`):**
-  - Created unified `is_authorized_manager()` security helper function.
-  - Drafted RLS policies granting equal full governance to both roles.
-  - Blocked anonymous bulk reads and PII harvesting completely.
-  - Added secure `track_complaint` RPC lookup function.
-  - Made audit tables (`ticket_history`, `call_attempts`, `notification_logs`) immutable.
-- **Infrastructure & Sessions:**
-  - Added `vercel.json` with strict HTTP security headers (`X-Frame-Options: DENY`, `X-Content-Type-Options: nosniff`).
-  - Added `.env*` exclusion to `.gitignore`.
-  - Added 12-hour municipal shift session timeout in `src/App.tsx`.
+### Removed
+- Removed `CHAIRMAN` from `UserRole` union.
+- Removed legacy public complaint tracking and anonymous policy proposals.

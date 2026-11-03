@@ -1,48 +1,36 @@
-# 🚀 DEPLOYMENT READINESS REPORT (TWO-ROLE MODEL)
+# 🚀 DEPLOYMENT READINESS REPORT
 
 **Project:** Smart Nagar Parishad Chittorgarh  
-**Target Environment:** Vercel Production (`smart-nagar-parisad-chittaurgarh.vercel.app`)  
-**Development Branch:** `security-hardening-v1`  
-**Production Branch:** `main`  
-**Roles Configured:** `PORTAL_MANAGER` & `CHAIRMAN` (Equal Privileges)  
-**Status:** READY FOR PRODUCTION MERGE & OWNER APPROVAL  
+**Branch:** `security-hardening-v1`  
+**Target Environment:** Vercel Production + Supabase PostgreSQL  
+**Access Model:** Strictly Private – Portal Manager Only  
+**Overall Status:** **READY FOR PRODUCTION MERGE & OWNER SQL EXECUTION**  
 
 ---
 
-## 1. PRE-DEPLOYMENT VERIFICATION CHECKLIST
+## 1. READINESS CHECKLIST
 
-| Item | Requirement | Verification Method | Status |
-|---|---|---|---|
-| **Production Build** | Must pass cleanly | `npm run build` | 🟢 **PASS (0 Errors)** |
-| **Two-Role Integrity** | Portal Manager & Chairman equal rights | Login & Component Audit | 🟢 **PASS** |
-| **Removed Roles Purged** | No legacy roles in types/code | Codebase grep | 🟢 **PASS** |
-| **Security Headers** | `vercel.json` configured | Schema validation | 🟢 **PASS** |
-| **Git Exclusion** | `.gitignore` excludes `.env*` | File check | 🟢 **PASS** |
-| **Session Hardening** | 12-hour session expiration | Unit flow test | 🟢 **PASS** |
-| **Zero Disruption Guarantee** | All 23 municipal features work | Regression audit | 🟢 **PASS** |
+- [x] **Source Code Security Hardening:** Complete (Zero role enumeration, strict whitelist, Supabase Auth).
+- [x] **Chairman Role Purge:** Complete (All code, types, banners, and policies purged).
+- [x] **Build Verification:** Complete (`tsc -b && vite build` passed with exit code 0).
+- [x] **Localhost Verification:** Running and verified on `http://localhost:3000`.
+- [x] **Database Security Script:** Complete (`RLS_POLICIES.sql` ready for execution in Supabase).
+- [x] **Manual Action Guide:** Complete (`OWNER_MANUAL_ACTION_REQUIRED.md`).
+- [ ] **Owner Action 1 (Vercel Deploy):** Merge `security-hardening-v1` into `main` and push to GitHub `origin main`.
+- [ ] **Owner Action 2 (Supabase SQL):** Execute `RLS_POLICIES.sql` in Supabase SQL Editor.
+- [ ] **Owner Action 3 (Secrets Rotation):** Make GitHub repo private and rotate service role key.
 
 ---
 
-## 2. PRODUCTION DEPLOYMENT PROCEDURE (ONCE APPROVED)
+## 2. PRODUCTION DEPLOYMENT PROCEDURE
 
-Execute in Command Prompt:
+To update the live Vercel website to match localhost:3000, run:
 
 ```cmd
 cd /d "e:\Chittortech Projects\Nagar Palika System"
 git checkout main
 git merge security-hardening-v1
-git rm --cached .env
-git commit -m "chore: untrack .env and deploy two-role security hardening"
 git push origin main
 ```
 
----
-
-## 3. ROLLBACK PROCEDURE
-
-If any discrepancy occurs, rollback instantly:
-```cmd
-git revert HEAD --no-edit
-git push origin main
-```
-Vercel will redeploy the prior state within 30 seconds.
+Vercel will automatically build and deploy within 45 seconds.

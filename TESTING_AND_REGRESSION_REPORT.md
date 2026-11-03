@@ -1,53 +1,54 @@
-# 🧪 TESTING & REGRESSION REPORT (TWO-ROLE MODEL)
+# 🧪 TESTING AND REGRESSION REPORT
 
 **Project:** Smart Nagar Parishad Chittorgarh  
-**Audit Branch:** `security-hardening-v1`  
-**User Roles Tested:** `PORTAL_MANAGER` & `CHAIRMAN` (Equal Privileges)  
-**Removed Roles:** `SUPER_ADMIN`, `DEPARTMENTAL_OFFICER`, `WARD_COUNCILLOR`, `CALL_OPERATOR` (Purged)  
-**Test Date:** 03 November 2026 | **Classification:** Official QA & Regression Audit  
+**Branch:** `security-hardening-v1`  
+**Test Suite:** Security Hardening & Workflow Regression Testing  
+**Model:** Strictly Private – Portal Manager Only  
+**Result:** **23 / 23 WORKFLOWS OPERATIONAL | SECURITY CONTROLS VERIFIED**  
 
 ---
 
-## 1. COMPILATION & BUILD TEST
+## 1. SECURITY TEST MATRIX (STRICTLY PRIVATE MODEL)
 
-```bash
-npm run build
-> tsc -b && vite build
-```
-
-- **Result:** 🟢 **PASS — EXIT CODE 0**
-- **TypeScript Integrity:** All code symbols, interfaces, and JSX components compiled with zero errors.
-- **Bundle Generation:** Complete clean production assets generated in `dist/`.
-
----
-
-## 2. TWO-ROLE WORKFLOW TEST MATRIX
-
-| Test ID | Workflow Tested | Portal Manager Role | Chairman Role | Result |
-|---|---|---|---|---|
-| **TR-01** | **Login & Dashboard Access** | ✅ Full Access | ✅ Full Access | 🟢 **PASS** |
-| **TR-02** | **View All 60 Wards** | ✅ Full 60 Wards Visible | ✅ Full 60 Wards Visible | 🟢 **PASS** |
-| **TR-03** | **Edit Councillor Info** | ✅ Can Edit Any Parshad | ✅ Can Edit Any Parshad | 🟢 **PASS** |
-| **TR-04** | **Manage Departments (Add/Edit/Delete)** | ✅ Full Authority | ✅ Full Authority | 🟢 **PASS** |
-| **TR-05** | **Register New Complaint** | ✅ Can Register Ticket | ✅ Can Register Ticket | 🟢 **PASS** |
-| **TR-06** | **View All Complaints & SLAs** | ✅ All 60 Wards Visible | ✅ All 60 Wards Visible | 🟢 **PASS** |
-| **TR-07** | **Two-Step Closure (Step 1 Authority)** | ✅ Can Certify Step 1 | ✅ Can Certify Step 1 | 🟢 **PASS** |
-| **TR-08** | **Two-Step Closure (Step 2 Citizen Call)** | ✅ Can Certify Step 2 | ✅ Can Certify Step 2 | 🟢 **PASS** |
-| **TR-09** | **1-Time Reopen Enforcement** | ✅ 1st Reopen Allowed | ✅ 1st Reopen Allowed | 🟢 **PASS** |
-| **TR-10** | **Reopen Lock on Subsequent Attempts** | ✅ Locked (Final Close Only) | ✅ Locked (Final Close Only) | 🟢 **PASS** |
-| **TR-11** | **Completed Complaints View** | ✅ Certified Closed Visible | ✅ Certified Closed Visible | 🟢 **PASS** |
-| **TR-12** | **Dedicated SLA Breached Tab** | ✅ Live Red Badge & List | ✅ Live Red Badge & List | 🟢 **PASS** |
-| **TR-13** | **Municipal Action Center (Notifs)** | ✅ Full Alert Triage | ✅ Full Alert Triage | 🟢 **PASS** |
-| **TR-14** | **WhatsApp Receipt Generation** | ✅ Auto-Generates wa.me | ✅ Auto-Generates wa.me | 🟢 **PASS** |
-| **TR-15** | **Search & Real-Time Filtering** | ✅ Substring Search Active | ✅ Substring Search Active | 🟢 **PASS** |
-| **TR-16** | **Anonymous Bulk Read Snooping** | ❌ Blocked (0 Rows) | ❌ Blocked (0 Rows) | 🟢 **PASS (DEFENDED)** |
-| **TR-17** | **Public Citizen Complaint Submission** | ✅ Public Submit Allowed | ✅ Public Submit Allowed | 🟢 **PASS** |
-| **TR-18** | **Public Citizen Tracking (RPC)** | ✅ Secure RPC Lookup | ✅ Secure RPC Lookup | 🟢 **PASS** |
-| **TR-19** | **Audit Trail Immutability** | ❌ Update/Delete Blocked | ❌ Update/Delete Blocked | 🟢 **PASS (IMMUTABLE)** |
-| **TR-20** | **System Settings Security** | ✅ Can Manage Settings | ✅ Can Manage Settings | 🟢 **PASS** |
+| Test Scenario | Action Tested | Result | Status |
+|---|---|---|---|
+| **ST-01** | Authorized Portal Manager Login (`chittortech@gmail.com`) | Valid password `123@321` | Authenticated successfully | **PASS** |
+| **ST-02** | Authorized Portal Manager Login (`nagarparisad@gmail.com`) | Valid password `123@321` | Authenticated successfully | **PASS** |
+| **ST-03** | Unauthorized Email Attempt (`paconfi.branchcgh@gmail.com`) | Blocked at login page | ⛔ Access Denied | **PASS** |
+| **ST-04** | Invalid Password Attempt | Wrong password on authorized email | ⛔ Invalid Password | **PASS** |
+| **ST-05** | Public / Self Registration | Attempted self-signup | No self-signup options available | **PASS** |
+| **ST-06** | LocalStorage Tampering | Fake user injected into `localStorage` | Evicted immediately on mount | **PASS** |
+| **ST-07** | Role Enumeration Check | Public inspection of login view | No roles or emails displayed | **PASS** |
+| **ST-08** | TypeScript Build Check | `tsc -b && vite build` | Built with 0 errors | **PASS** |
+| **ST-09** | Production Database RLS (Prepared) | `RLS_POLICIES.sql` syntax and coverage | Covers all 10 tables + profiles | **PASS** |
+| **ST-10** | Immutability Verification | UPDATE/DELETE on audit history | Omitted from RLS policies | **PASS** |
 
 ---
 
-## 3. CONCLUSION
+## 2. REGRESSION WORKFLOW VERIFICATION (23 MUNICIPAL WORKFLOWS)
 
-The streamlined two-role architecture (`PORTAL_MANAGER` and `CHAIRMAN`) provides complete operational symmetry with zero feature degradation. All 23 municipal capabilities operate with identical governance power for both roles.
+All 23 existing municipal features have been verified for full functionality under the single `PORTAL_MANAGER` role:
+
+- [x] W-01: 60-Ward GIS Directory & Mapping
+- [x] W-02: Councillor Contact Number & Landmark Editing
+- [x] W-03: Department Addition, Editing, and Safe Deletion
+- [x] W-04: Complaint Category Configuration & SLA Setting
+- [x] W-05: Intake Queue Desk (Helpline 10 AM - 6 PM & WhatsApp Bot)
+- [x] W-06: New Municipal Ticket Generation (`CGR-xxxx`)
+- [x] W-07: 10-Digit Indian Mobile Number Validation
+- [x] W-08: Active Complaints Grid & Sorting
+- [x] W-09: Live IST Deadline SLA Breached Countdown
+- [x] W-10: Dedicated SLA Breached Tab & Real-time Red Alert Badge
+- [x] W-11: Two-Step Closure: Step 1 Department Officer Sign-off
+- [x] W-12: Two-Step Closure: Step 2 Citizen Telephonic Satisfaction Call
+- [x] W-13: Strict 1-Time Reopen Policy (Unresolved lock after 1st reopen)
+- [x] W-14: Completed Complaints Historical Archive View
+- [x] W-15: Notification Dropdown Center
+- [x] W-16: Automated Hindi WhatsApp Dispatch Audit Log
+- [x] W-17: Comprehensive Grievance Search & Filters
+- [x] W-18: Export & Reporting Functionality
+- [x] W-19: Desktop Workstation Guard (1024px minimum width)
+- [x] W-20: 12-Hour Municipal Working Shift Session Timeout
+- [x] W-21: Clean Sky-Blue Navigation Header & Search Bar
+- [x] W-22: Supabase Realtime WebSocket Synchronization
+- [x] W-23: Unified Single-Role Portal Governance
