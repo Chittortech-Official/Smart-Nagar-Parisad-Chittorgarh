@@ -13,6 +13,12 @@ export function App() {
     if (!saved) return null;
     try {
       const parsed = JSON.parse(saved);
+      // Strict Whitelist Barrier: Invalidate any session not matching the 2 authorized administrative emails
+      const allowedEmails = ['chittortech@gmail.com', 'nagarparisad@gmail.com'];
+      if (!parsed.email || !allowedEmails.includes(parsed.email.toLowerCase())) {
+        localStorage.removeItem('snp_chittorgarh_user');
+        return null;
+      }
       // Municipal Shift Security: Invalidate session after 12 hours
       if (parsed.session_expires_at && Date.now() > parsed.session_expires_at) {
         localStorage.removeItem('snp_chittorgarh_user');
@@ -292,14 +298,29 @@ export function App() {
   }, []);
 
   const handleLogin = (role: UserRole, email: string) => {
+    const cleanEmail = email.trim().toLowerCase();
+    const allowedEmails = ['chittortech@gmail.com', 'nagarparisad@gmail.com'];
+    if (!allowedEmails.includes(cleanEmail)) {
+      console.error("Unauthorized login blocked:", cleanEmail);
+      return;
+    }
     // 12-hour official municipal working shift validity
     const session_expires_at = Date.now() + 12 * 60 * 60 * 1000;
-    setCurrentUser({ role, email, session_expires_at });
+    const session = { role, email: cleanEmail, session_expires_at };
+    setCurrentUser(session);
+    localStorage.setItem('snp_chittorgarh_user', JSON.stringify(session));
   };
 
-  const handleLogout = () => {
-    setCurrentUser(null);
+  const handleLogout = async () => {
+    if (supabase) {
+      try {
+        await supabase.auth.signOut();
+      } catch (err) {
+        console.warn("Supabase sign out error:", err);
+      }
+    }
     localStorage.removeItem('snp_chittorgarh_user');
+    setCurrentUser(null);
   };
 
   const handleUpdateTicket = async (updatedTicket: Ticket) => {
