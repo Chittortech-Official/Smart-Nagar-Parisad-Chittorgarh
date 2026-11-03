@@ -1,11 +1,11 @@
-# 🚨 OWNER MANUAL ACTION REQUIRED
+# 🚨 OWNER MANUAL ACTION REQUIRED (TWO-ROLE MODEL)
 
 **Project:** Smart Nagar Parishad Chittorgarh  
-**Document Ref:** SNP-MANUAL-ACTION-2026-V1  
+**Roles Configured:** `PORTAL_MANAGER` & `CHAIRMAN` (Equal Privileges)  
 **Status:** ACTION REQUIRED BY PROJECT OWNER / ADMINISTRATOR  
 
 > [!CAUTION]
-> The tasks listed in this document can **ONLY be performed by you** (the project owner) because they require root administrative access to your personal Supabase, GitHub, and Vercel dashboards. Automated tools cannot and should not perform these root credential rotations autonomously.
+> The tasks listed in this document can **ONLY be performed by you** (the project owner) because they require root administrative access to your personal Supabase, GitHub, and Vercel dashboards. Automated tools cannot perform these root credential rotations autonomously.
 
 ---
 
@@ -63,46 +63,36 @@
 
 ## 🔒 2. DATABASE SECURITY APPROVAL ACTIONS
 
-### Task 2.1: Review & Approve Row-Level Security (RLS) SQL
-* **Why it is necessary:** Currently, all 10 live database tables have RLS disabled. We have prepared safe, non-breaking SQL scripts in `DATABASE_SECURITY_PLAN.md`.
-* **Where to review:** Open `DATABASE_SECURITY_PLAN.md` in your project folder.
+### Task 2.1: Review & Approve Two-Role RLS SQL
+* **Why it is necessary:** Enables RLS on all 10 live tables with equal operational access for Portal Manager and Chairman, while blocking anonymous data scraping.
+* **Where to review:** Open `DATABASE_SECURITY_PLAN.md`.
 * **How to execute once approved:**
   1. Open: `https://supabase.com/dashboard/project/qvrhgytkufajcpletbfp/sql/new`
   2. Paste the SQL script from `DATABASE_SECURITY_PLAN.md`.
   3. Click **Run**.
-* **Downtime Risk:** None if executed following the phased plan.
-* **If you do not complete this:** Anonymous web requests can read and modify all 10 database tables.
+* **Downtime Risk:** Zero if executed following the phased plan.
 
 ---
 
-## 💻 3. GITHUB & GIT REPOSITORY ACTIONS
+## 💻 3. GITHUB ACTIONS
 
 ### Task 3.1: Stop Tracking `.env` in Git
-* **Why it is necessary:** We have already updated `.gitignore` on the `security-hardening-v1` branch. When you are ready to merge:
 * **Command to run in your Command Prompt:**
   ```cmd
   cd /d "e:\Chittortech Projects\Nagar Palika System"
   git rm --cached .env
   git commit -m "chore: untrack .env from git repository"
   ```
-* **Effect:** Stops git from tracking `.env` without deleting your local `.env` file on your laptop.
 
 ---
 
 ## 🚀 4. FINAL DEPLOYMENT ACTIONS
 
 ### Task 4.1: Merge `security-hardening-v1` Branch
-* **Why it is necessary:** Contains `vercel.json` (security headers), updated `.gitignore`, and session timeout hardening.
-* **How to merge:**
+* **How to merge once ready:**
   ```cmd
   cd /d "e:\Chittortech Projects\Nagar Palika System"
   git checkout main
   git merge security-hardening-v1
   git push origin main
   ```
-* **Effect:** Vercel will automatically deploy the security headers and hardened session handling to production.
-
----
-
-*Prepared by Senior Cybersecurity Specialist — Smart Nagar Parishad Chittorgarh*
-
