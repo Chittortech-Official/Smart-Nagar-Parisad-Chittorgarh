@@ -1,11 +1,6 @@
 export type UserRole = 
-  | 'SUPER_ADMIN' 
   | 'PORTAL_MANAGER' 
-  | 'CALL_OPERATOR' 
-  | 'WARD_COUNCILLOR' 
-  | 'DEPARTMENTAL_OFFICER' 
-  | 'CHAIRMAN' 
-  | 'VICE_CHAIRMAN';
+  | 'CHAIRMAN';
 
 export type TicketStatus = 
   | 'PENDING_REVIEW'

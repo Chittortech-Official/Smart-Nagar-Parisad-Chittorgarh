@@ -16,7 +16,6 @@ import {
   ArrowRight,
   ClockAlert,
   Inbox,
-  CheckCircle2,
   Sparkles
 } from 'lucide-react';
 
@@ -25,11 +24,21 @@ interface LoginViewProps {
 }
 
 export const LoginView: React.FC<LoginViewProps> = ({ onLogin }) => {
+  const [selectedRole, setSelectedRole] = useState<UserRole>('PORTAL_MANAGER');
   const [email, setEmail] = useState('portalmanager@chittorgarh.gov.in');
   const [password, setPassword] = useState('••••••••••••');
   const [showPassword, setShowPassword] = useState(false);
   const [loginError, setLoginError] = useState<string | null>(null);
-  const selectedRole: UserRole = 'PORTAL_MANAGER';
+
+  const handleRoleSelect = (role: UserRole) => {
+    setSelectedRole(role);
+    setLoginError(null);
+    if (role === 'PORTAL_MANAGER') {
+      setEmail('portalmanager@chittorgarh.gov.in');
+    } else {
+      setEmail('chairman@chittorgarh.gov.in');
+    }
+  };
 
   const handleSubmit = (e: React.FormEvent) => {
     e.preventDefault();
@@ -199,33 +208,57 @@ export const LoginView: React.FC<LoginViewProps> = ({ onLogin }) => {
             </p>
           </div>
 
-          {/* Official Role Indicator: Portal Manager (Clean, Single Pre-Selected) */}
-          <div className="space-y-1.5">
+          {/* Official Role Indicator: Portal Manager & Chairman (Only Two Roles) */}
+          <div className="space-y-2">
             <div className="flex items-center justify-between">
               <label className="text-[11px] font-bold uppercase tracking-wider text-slate-600">
-                Select Role for Login
+                Select Authorized Role
               </label>
               <span className="text-[10px] font-bold text-sky-700 uppercase tracking-wider bg-sky-100 px-2 py-0.5 rounded-full border border-sky-200">
-                Authorized Role
+                Equal Permissions
               </span>
             </div>
 
-            <div className="flex items-center gap-3 p-3 rounded-xl border border-sky-200 bg-gradient-to-r from-sky-50/90 to-blue-50/60 text-slate-800 shadow-2xs">
-              <div className="w-8 h-8 rounded-lg bg-sky-600 text-white flex items-center justify-center font-bold text-xs shrink-0 shadow-xs">
-                PM
-              </div>
-              <div className="flex-1 min-w-0">
-                <div className="flex items-center gap-2">
-                  <span className="text-xs font-bold text-slate-900">Portal Manager</span>
-                  <span className="text-[9px] font-bold uppercase px-1.5 py-0.2 rounded bg-emerald-100 text-emerald-800 border border-emerald-200">
-                    Active
-                  </span>
+            <div className="grid grid-cols-2 gap-2">
+              <button
+                type="button"
+                onClick={() => handleRoleSelect('PORTAL_MANAGER')}
+                className={`flex items-center gap-2.5 p-2.5 rounded-xl border text-left transition-all ${
+                  selectedRole === 'PORTAL_MANAGER'
+                    ? 'border-sky-500 bg-sky-50/80 ring-2 ring-sky-500/20 text-slate-900 shadow-2xs'
+                    : 'border-slate-200 bg-white hover:bg-slate-50 text-slate-600'
+                }`}
+              >
+                <div className={`w-7 h-7 rounded-lg flex items-center justify-center font-bold text-xs shrink-0 ${
+                  selectedRole === 'PORTAL_MANAGER' ? 'bg-sky-600 text-white shadow-xs' : 'bg-slate-100 text-slate-600'
+                }`}>
+                  PM
                 </div>
-                <span className="text-[11px] text-sky-700 font-mono block truncate">
-                  portalmanager@chittorgarh.gov.in
-                </span>
-              </div>
-              <CheckCircle2 className="w-4 h-4 text-sky-600 shrink-0" />
+                <div className="min-w-0">
+                  <span className="text-xs font-bold block truncate">Portal Manager</span>
+                  <span className="text-[10px] text-slate-500 block">Full Governance</span>
+                </div>
+              </button>
+
+              <button
+                type="button"
+                onClick={() => handleRoleSelect('CHAIRMAN')}
+                className={`flex items-center gap-2.5 p-2.5 rounded-xl border text-left transition-all ${
+                  selectedRole === 'CHAIRMAN'
+                    ? 'border-sky-500 bg-sky-50/80 ring-2 ring-sky-500/20 text-slate-900 shadow-2xs'
+                    : 'border-slate-200 bg-white hover:bg-slate-50 text-slate-600'
+                }`}
+              >
+                <div className={`w-7 h-7 rounded-lg flex items-center justify-center font-bold text-xs shrink-0 ${
+                  selectedRole === 'CHAIRMAN' ? 'bg-sky-600 text-white shadow-xs' : 'bg-slate-100 text-slate-600'
+                }`}>
+                  CH
+                </div>
+                <div className="min-w-0">
+                  <span className="text-xs font-bold block truncate">Chairman</span>
+                  <span className="text-[10px] text-slate-500 block">Full Governance</span>
+                </div>
+              </button>
             </div>
           </div>
 
