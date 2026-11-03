@@ -28,11 +28,25 @@ export const LoginView: React.FC<LoginViewProps> = ({ onLogin }) => {
   const [email, setEmail] = useState('portalmanager@chittorgarh.gov.in');
   const [password, setPassword] = useState('••••••••••••');
   const [showPassword, setShowPassword] = useState(false);
+  const [loginError, setLoginError] = useState<string | null>(null);
   const selectedRole: UserRole = 'PORTAL_MANAGER';
 
   const handleSubmit = (e: React.FormEvent) => {
     e.preventDefault();
-    onLogin(selectedRole, email);
+    setLoginError(null);
+
+    const cleanEmail = email.trim();
+    if (!cleanEmail || !/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(cleanEmail)) {
+      setLoginError("कृपया एक मान्य आधिकारिक ईमेल पता दर्ज करें (Valid email address required).");
+      return;
+    }
+
+    if (!password || password.length < 4) {
+      setLoginError("पासवर्ड कम से कम 4 अक्षरों का होना आवश्यक है (Password must be at least 4 characters).");
+      return;
+    }
+
+    onLogin(selectedRole, cleanEmail);
   };
 
   // Official portal functionalities listed under Nagar Parishad Admin
@@ -217,6 +231,12 @@ export const LoginView: React.FC<LoginViewProps> = ({ onLogin }) => {
 
           {/* Login Form */}
           <form onSubmit={handleSubmit} className="space-y-4">
+            {loginError && (
+              <div className="p-3 rounded-xl bg-rose-50 border border-rose-200 text-rose-700 text-xs font-medium flex items-center gap-2">
+                <span className="w-2 h-2 rounded-full bg-rose-500 shrink-0" />
+                <span>{loginError}</span>
+              </div>
+            )}
             {/* Email Field */}
             <div className="space-y-1.5">
               <label className="text-[11px] font-bold uppercase tracking-wider text-slate-700">

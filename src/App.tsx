@@ -8,9 +8,20 @@ import { supabase, isSupabaseConfigured } from './lib/supabaseClient';
 import { formatDeadlineIST } from './utils/ticketGenerator';
 
 export function App() {
-  const [currentUser, setCurrentUser] = useState<{ role: UserRole; email: string } | null>(() => {
+  const [currentUser, setCurrentUser] = useState<{ role: UserRole; email: string; session_expires_at?: number } | null>(() => {
     const saved = localStorage.getItem('snp_chittorgarh_user');
-    return saved ? JSON.parse(saved) : null;
+    if (!saved) return null;
+    try {
+      const parsed = JSON.parse(saved);
+      // Municipal Shift Security: Invalidate session after 12 hours
+      if (parsed.session_expires_at && Date.now() > parsed.session_expires_at) {
+        localStorage.removeItem('snp_chittorgarh_user');
+        return null;
+      }
+      return parsed;
+    } catch {
+      return null;
+    }
   });
 
   const [wards, setWards] = useState<Ward[]>(() => {
@@ -281,11 +292,14 @@ export function App() {
   }, []);
 
   const handleLogin = (role: UserRole, email: string) => {
-    setCurrentUser({ role, email });
+    // 12-hour official municipal working shift validity
+    const session_expires_at = Date.now() + 12 * 60 * 60 * 1000;
+    setCurrentUser({ role, email, session_expires_at });
   };
 
   const handleLogout = () => {
     setCurrentUser(null);
+    localStorage.removeItem('snp_chittorgarh_user');
   };
 
   const handleUpdateTicket = async (updatedTicket: Ticket) => {
