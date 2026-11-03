@@ -151,7 +151,7 @@ export function App() {
 
       // Live sync tickets from Supabase with CGR-0001 sequence
       const { data: ticketsData, error: ticketsErr } = await activeClient
-        .from('tickets')
+        .from(currentUser?.role === 'APPLICATION_VIEWER' ? 'viewer_tickets' : 'tickets')
         .select(`
           *,
           departments ( name, head_officer_name, head_officer_phone ),
@@ -357,30 +357,7 @@ export function App() {
         const ticketDbId = ticketRow?.id;
 
         if (ticketDbId) {
-          // 3. Log to ticket_history if status changed
-          if (prevTicket && prevTicket.status !== updatedTicket.status) {
-            let actionType = 'STATUS_UPDATED';
-            let notes = `Status changed from ${prevTicket.status} to ${updatedTicket.status}`;
-
-            if (updatedTicket.status === 'RESOLVED_AWAITING_CITIZEN') {
-              actionType = 'AUTHORITY_VERIFIED';
-              notes = updatedTicket.authority_notes || 'Officer confirmed field resolution';
-            } else if (updatedTicket.status === 'CLOSED') {
-              actionType = 'CITIZEN_CONFIRMED_CLOSED';
-              notes = updatedTicket.citizen_feedback || 'Citizen confirmed satisfaction';
-            } else if (updatedTicket.status === 'REOPENED') {
-              actionType = 'CITIZEN_REOPENED';
-              notes = updatedTicket.citizen_feedback || 'Citizen reported unresolved';
-            }
-
-            await supabase.from('ticket_history').insert([{
-              ticket_id: ticketDbId,
-              previous_status: prevTicket.status,
-              new_status: updatedTicket.status,
-              action_type: actionType,
-              notes: notes
-            }]);
-          }
+          // 3. Status transition automatically & immutably recorded via PostgreSQL trigger trg_auto_record_ticket_history
 
           // 4. Log to authority_confirmations if Step 1 was just verified
           if (updatedTicket.authority_confirmed && (!prevTicket || !prevTicket.authority_confirmed)) {
@@ -465,14 +442,7 @@ export function App() {
         } else if (insertedTicket?.id) {
           console.log("Ticket successfully inserted into Supabase:", newTicket.ticket_number);
 
-          // Log initial entry to ticket_history
-          await supabase.from('ticket_history').insert([{
-            ticket_id: insertedTicket.id,
-            previous_status: null,
-            new_status: 'REGISTERED',
-            action_type: 'TICKET_REGISTERED',
-            notes: 'Official municipal complaint ticket registered by Portal Manager'
-          }]);
+          // Registration audit event automatically recorded via PostgreSQL database trigger
         }
       } catch (err) {
         console.warn("Supabase ticket insert exception:", err);

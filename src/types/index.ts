@@ -1,4 +1,4 @@
-export type UserRole = 'PORTAL_MANAGER';
+export type UserRole = 'PORTAL_MANAGER' | 'APPLICATION_VIEWER';
 
 export type TicketStatus = 
   | 'PENDING_REVIEW'
