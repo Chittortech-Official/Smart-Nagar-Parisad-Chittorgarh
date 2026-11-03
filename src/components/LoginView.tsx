@@ -29,7 +29,7 @@ interface LoginViewProps {
 // Strictly authorized administrative accounts (Zero Bypass Whitelist)
 const AUTHORIZED_ACCOUNTS: Record<string, { role: UserRole; title: string }> = {
   'chittortech@gmail.com': { role: 'PORTAL_MANAGER', title: 'Portal Manager' },
-  'nagarparisad@gmail.com': { role: 'CHAIRMAN', title: 'Hon. Chairman' }
+  'nagarparisad@gmail.com': { role: 'PORTAL_MANAGER', title: 'Portal Manager' }
 };
 
 export const LoginView: React.FC<LoginViewProps> = ({ onLogin }) => {
@@ -126,7 +126,7 @@ export const LoginView: React.FC<LoginViewProps> = ({ onLogin }) => {
     },
     {
       title: 'Real-Time SLA & Executive Escalation Monitoring',
-      desc: '12h, 24h, 48h, 72h departmental resolution countdowns with Hon. Chairman oversight.',
+      desc: '12h, 24h, 48h, 72h departmental resolution countdowns with Portal Manager oversight.',
       icon: <ClockAlert className="w-4 h-4 text-amber-400" />,
       accent: 'border-amber-500/20 bg-amber-500/10 text-amber-300'
     },

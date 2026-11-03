@@ -1,6 +1,4 @@
-export type UserRole = 
-  | 'PORTAL_MANAGER' 
-  | 'CHAIRMAN';
+export type UserRole = 'PORTAL_MANAGER';
 
 export type TicketStatus = 
   | 'PENDING_REVIEW'
@@ -95,7 +93,7 @@ export interface Ticket {
 export interface NotificationLog {
   id: string;
   ticket_number: string;
-  recipient_type: 'CITIZEN' | 'COUNCILLOR' | 'OFFICER' | 'CHAIRMAN';
+  recipient_type: 'CITIZEN' | 'COUNCILLOR' | 'OFFICER' | 'ADMIN';
   recipient_name: string;
   recipient_phone: string;
   channel: 'WHATSAPP' | 'SMS';

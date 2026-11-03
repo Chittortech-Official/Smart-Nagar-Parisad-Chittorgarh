@@ -1946,7 +1946,7 @@ export const DashboardView = ({
             )}
           </div>
 
-          {/* 6 OFFICIAL KPI CARDS (Workflow D: Chairman/Executive & Admin Monitoring) */}
+          {/* 6 OFFICIAL KPI CARDS (Workflow D: Portal Manager & Executive SLA Monitoring) */}
           <div className="grid grid-cols-2 md:grid-cols-3 xl:grid-cols-6 gap-3.5 print:hidden">
             {/* Card 1: Today's Registered */}
             <div className="bg-white p-4 rounded-2xl border border-slate-200 shadow-2xs space-y-2">

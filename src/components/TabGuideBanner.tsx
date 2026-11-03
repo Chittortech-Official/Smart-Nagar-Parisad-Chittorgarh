@@ -62,8 +62,8 @@ export function TabGuideBanner({ tabKey }: TabGuideBannerProps) {
             ? 'SLA समय-सीमा उल्लंघन, मोबाइल ऐप सिंक एवं एस्केलेशन (Workflow G & D)' 
             : 'SLA Breach, Executive Mobile Sync & Escalation Flowchart (Workflow G & D)',
           subtitle: lang === 'hi'
-            ? '24h/48h/72h समय-सीमा, ओवरड्यू रेड अलर्ट, सभापति/उपसभापति हस्तक्षेप एवं अनसुलझे मामलों की प्रक्रिया'
-            : 'Standard municipal SLAs, overdue red alerts, Chairman & Vice-Chairman mobile app sync, and escalation'
+            ? '24h/48h/72h समय-सीमा, ओवरड्यू रेड अलर्ट, पोर्टल मैनेजर हस्तक्षेप एवं अनसुलझे मामलों की प्रक्रिया'
+            : 'Standard municipal SLAs, overdue red alerts, Portal Manager mobile alert sync, and escalation'
         };
       case 'WARDS':
         return {
@@ -346,16 +346,16 @@ export function TabGuideBanner({ tabKey }: TabGuideBannerProps) {
                               {lang === 'hi' ? 'ओवरड्यू' : 'Overdue'}
                             </span>
                             <span className="text-[10px] text-rose-800 font-semibold">
-                              {lang === 'hi' ? '📱 सभापति / उपसभापति' : '📱 Chairman & Vice-Chairman'}
+                              {lang === 'hi' ? '📱 पोर्टल मैनेजर अलर्ट' : '📱 Portal Manager Alert'}
                             </span>
                           </div>
                           <p className="font-bold text-xs text-rose-950">
-                            {lang === 'hi' ? 'मोबाइल ऐप पर रेड अलर्ट' : 'Executive Mobile Alert'}
+                            {lang === 'hi' ? 'प्रशासनिक डैशबोर्ड पर रेड अलर्ट' : 'Administrative Red Alert'}
                           </p>
                           <p className="text-[11px] text-rose-900 text-left leading-relaxed">
                             {lang === 'hi' 
-                              ? 'शिकायत लाल रंग में चमकती है। सभापति व उपसभापति के पास तुरंत अलर्ट पहुँचता है।' 
-                              : 'Flashes in Red on Chairman & Vice-Chairman dashboard under Overdue tab.'}
+                              ? 'शिकायत लाल रंग में चमकती है। पोर्टल मैनेजर के पास तुरंत अलर्ट पहुँचता है।' 
+                              : 'Flashes in Red on Portal Manager dashboard under Overdue tab.'}
                           </p>
                         </div>
                         <div className="mt-2 px-2 py-1 bg-rose-200/80 rounded text-[10px] text-rose-900 font-bold">
@@ -1080,8 +1080,8 @@ export function TabGuideBanner({ tabKey }: TabGuideBannerProps) {
                     ? 'चित्तौड़गढ़ नगर परिषद के सभी 60 वार्डों की आधिकारिक शिकायतें। यहाँ प्रत्येक टिकट का स्टेटस, नागरिक संपर्क, वार्ड, विभाग और SLA स्थिति उपलब्ध है।'
                     : 'Officially registered municipal tickets across all 60 wards, with citizen info, assigned departments, SLAs, and live resolution status.')}
                   {tabKey === 'SLA' && (lang === 'hi'
-                    ? 'तय समय-सीमा (SLA) पार कर चुकी या उच्चाधिकारियों को प्रेषित शिकायतें। यह सूची सभापति एवं उपसभापति मोबाइल ऐप पर प्राथमिकता से प्रदर्शित होती है।'
-                    : 'Overdue complaints and critical administrative escalations synced directly with Chairman & Vice-Chairman mobile apps.')}
+                    ? 'तय समय-सीमा (SLA) पार कर चुकी या उच्चाधिकारियों को प्रेषित शिकायतें। यह सूची पोर्टल मैनेजर डैशबोर्ड पर प्राथमिकता से प्रदर्शित होती है।'
+                    : 'Overdue complaints and critical administrative escalations monitored directly by Portal Manager.')}
                   {tabKey === 'WARDS' && (lang === 'hi'
                     ? 'सभी 60 वार्डों का वर्गीकरण, निर्वाचित पार्षद का नाम, मोबाइल नंबर और प्रमुख लैंडमार्क।'
                     : 'Complete directory of 60 wards, elected councillors, phone contacts, and municipal landmarks.')}
