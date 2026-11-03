@@ -37,3 +37,4 @@
 ### SEC-03: Frontend-Only Authentication
 - **Risk:** Anyone visiting the portal can click "Sign In" and access Portal Manager controls without knowing any password.
 - **Remediation:** Connect `LoginView.tsx` to Supabase Auth so that users authenticate against verified server-side hashes.
+

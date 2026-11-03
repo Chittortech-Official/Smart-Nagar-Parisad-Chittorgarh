@@ -76,3 +76,4 @@ git revert HEAD --no-edit
 git push origin main
 ```
 Vercel will revert to the previous working deployment within 30 seconds.
+

@@ -45,3 +45,4 @@ All notable changes made to the Smart Nagar Parishad Chittorgarh project are doc
   - Added Municipal Action & Alerts notification dropdown.
   - Added permanent department delete button with confirmation and ticket safety fallback.
   - Applied Sky Blue gradient header and compact search bar.
+

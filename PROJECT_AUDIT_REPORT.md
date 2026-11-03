@@ -90,3 +90,4 @@ Unmigrated Tables from schema.sql (2):
 2. **Missing Database Access Control:** 100% of live tables have RLS disabled. Anonymous API clients have full read/write privileges.
 3. **Session Management Hardening:** Added session expiration (12-hour municipal shift timeout) and email/password format validation on local development branch `security-hardening-v1`.
 4. **Browser Headers Added:** Created `vercel.json` with strict `X-Frame-Options`, `X-Content-Type-Options`, and `Referrer-Policy`.
+
