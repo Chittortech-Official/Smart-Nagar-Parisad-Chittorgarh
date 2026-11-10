@@ -740,7 +740,7 @@ export const DashboardView = ({
   const kpis = useMemo(() => {
     const todayRegistered = todayTicketsCount;
     const totalComplaints = scopeTickets.filter(t => t.status !== 'REJECTED').length;
-    const pendingComplaints = scopeTickets.filter(t => (t.status === 'REGISTERED' || t.status === 'IN_PROGRESS' || t.status === 'RESOLVED_AWAITING_CITIZEN') && t.status !== 'REJECTED').length;
+    const pendingComplaints = scopeTickets.filter(t => t.status === 'REGISTERED' || t.status === 'IN_PROGRESS' || t.status === 'RESOLVED_AWAITING_CITIZEN').length;
     const confirmedResolvedClosed = scopeTickets.filter(t => t.status === 'CLOSED').length;
     const overdueComplaints = scopeTickets.filter(t => t.is_overdue && t.status !== 'CLOSED' && t.status !== 'REJECTED').length;
     const escalatedComplaints = scopeTickets.filter(t => t.is_escalated && t.status !== 'CLOSED' && t.status !== 'REJECTED').length;
