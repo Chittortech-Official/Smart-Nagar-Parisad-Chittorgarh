@@ -182,6 +182,7 @@ export function App() {
           is_escalated: row.is_escalated,
           escalation_notes: row.escalation_notes,
           registration_time: row.registration_time ? new Date(row.registration_time).toLocaleString('en-IN', { hour: '2-digit', minute: '2-digit', day: '2-digit', month: '2-digit' }) : 'Recently',
+          registration_time_iso: row.registration_time || null,
           resolution_time: row.resolution_time,
           closed_at: row.closed_at,
           authority_confirmed: row.status === 'RESOLVED_AWAITING_CITIZEN' || row.status === 'CLOSED',
@@ -433,16 +434,19 @@ export function App() {
           problem_description: newTicket.problem_description,
           status: newTicket.status,
           forwarding_option: newTicket.forwarding_option || 'COUNCILLOR_AND_OFFICER',
-          sla_hours: newTicket.sla_hours,
-          sla_deadline: new Date(Date.now() + newTicket.sla_hours * 3600000).toISOString()
+          sla_hours: newTicket.sla_hours || 0,
+          sla_deadline: newTicket.status === 'REJECTED' ? new Date().toISOString() : new Date(Date.now() + (newTicket.sla_hours || 24) * 3600000).toISOString(),
+          escalation_notes: newTicket.escalation_notes || null,
+          closed_at: newTicket.status === 'REJECTED' ? (newTicket.closed_at || new Date().toISOString()) : (newTicket.closed_at || null)
         }]).select('id, ticket_number').single();
 
         if (error) {
           console.error("Supabase ticket insert error:", error);
+          alert(`Supabase Insert Failed: ${error.message}\n(Code: ${error.code})`);
         } else if (insertedTicket?.id) {
-          console.log("Ticket successfully inserted into Supabase:", newTicket.ticket_number);
-
-          // Registration audit event automatically recorded via PostgreSQL database trigger
+          console.log("Ticket successfully inserted into Supabase:", newTicket.ticket_number, insertedTicket.id);
+          // Sync real Supabase generated UUID
+          setTickets(prev => prev.map(t => t.ticket_number === newTicket.ticket_number ? { ...t, id: insertedTicket.id } : t));
         }
       } catch (err) {
         console.warn("Supabase ticket insert exception:", err);

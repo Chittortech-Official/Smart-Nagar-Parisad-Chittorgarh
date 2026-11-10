@@ -26,6 +26,7 @@ interface NewComplaintModalProps {
   onClose: () => void;
   onSubmit: (data: {
     decision: ComplaintDecision;
+    ticket_number?: string;
     rejection_reason?: string;
     citizen_name: string;
     citizen_phone: string;
@@ -162,6 +163,7 @@ export const NewComplaintModal = ({
 
     onSubmit({
       decision,
+      ticket_number: nextTicketNumber,
       rejection_reason: decision === 'REJECT' ? rejectionReason.trim() : undefined,
       citizen_name: citizenName.trim(),
       citizen_phone: formattedPhone,
@@ -193,8 +195,12 @@ export const NewComplaintModal = ({
                 <h3 className="font-bold text-lg leading-tight text-white tracking-tight">
                   Citizen Complaint Registration &amp; Decision
                 </h3>
-                {decision === 'ACCEPT' && nextTicketNumber && (
-                  <span className="px-2.5 py-0.5 rounded-full text-[11px] font-mono font-bold bg-blue-500/25 text-blue-200 border border-blue-400/40 shadow-xs">
+                {nextTicketNumber && (
+                  <span className={`px-2.5 py-0.5 rounded-full text-[11px] font-mono font-bold shadow-xs border ${
+                    decision === 'ACCEPT'
+                      ? 'bg-blue-500/25 text-blue-200 border-blue-400/40'
+                      : 'bg-rose-500/25 text-rose-200 border-rose-400/40'
+                  }`}>
                     Assigned Ticket: {nextTicketNumber}
                   </span>
                 )}

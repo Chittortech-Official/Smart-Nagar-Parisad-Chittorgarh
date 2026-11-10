@@ -97,7 +97,8 @@ CREATE TABLE IF NOT EXISTS tickets (
         'IN_PROGRESS',
         'RESOLVED_AWAITING_CITIZEN',
         'CLOSED',
-        'REOPENED'
+        'REOPENED',
+        'REJECTED'
     )),
     forwarding_option VARCHAR(50) DEFAULT 'COUNCILLOR_AND_OFFICER' CHECK (forwarding_option IN (
         'COUNCILLOR_AND_OFFICER',

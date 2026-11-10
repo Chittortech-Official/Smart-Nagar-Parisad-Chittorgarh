@@ -80,6 +80,7 @@ export interface Ticket {
   assigned_officer_name: string;
   assigned_officer_phone: string;
   registration_time: string;
+  registration_time_iso?: string;
   resolution_time?: string;
   closed_at?: string;
   authority_confirmed: boolean;

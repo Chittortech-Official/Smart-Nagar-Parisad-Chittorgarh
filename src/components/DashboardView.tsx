@@ -148,11 +148,11 @@ export const DashboardView = ({
   departments,
   tickets,
   intakes,
-  notifications,
+  notifications: _notifications,
   onUpdateTicket,
   onAddTicket,
   onUpdateIntake,
-  onAddIntake,
+  onAddIntake: _onAddIntake,
   onAddNotification,
   onUpdateWard,
   onUpdateDepartment,
@@ -202,37 +202,6 @@ export const DashboardView = ({
   const [showNewComplaintModal, setShowNewComplaintModal] = useState(false);
   const [modalDefaultDecision, setModalDefaultDecision] = useState<'ACCEPT' | 'REJECT'>('ACCEPT');
   const [intakeFilterStatus, setIntakeFilterStatus] = useState<'ALL' | 'PENDING_REVIEW' | 'REJECTED' | 'ACCEPTED'>('ALL');
-  const [showNotificationsDropdown, setShowNotificationsDropdown] = useState(false);
-  const [notificationTab, setNotificationTab] = useState<'ALL' | 'TASKS' | 'SLA' | 'LOGS'>('ALL');
-  const notificationDropdownRef = useRef<HTMLDivElement>(null);
-
-  // Close notifications dropdown on outside click
-  useEffect(() => {
-    const handleOutsideClick = (event: MouseEvent) => {
-      if (
-        notificationDropdownRef.current &&
-        !notificationDropdownRef.current.contains(event.target as Node)
-      ) {
-        setShowNotificationsDropdown(false);
-      }
-    };
-    if (showNotificationsDropdown) {
-      document.addEventListener('mousedown', handleOutsideClick);
-    }
-    return () => {
-      document.removeEventListener('mousedown', handleOutsideClick);
-    };
-  }, [showNotificationsDropdown]);
-
-  // Actionable Municipal Work & Alerts Data (Live Work Tracker)
-  const pendingIntakesList = useMemo(() => intakes.filter(i => i.status === 'PENDING_REVIEW'), [intakes]);
-  const overdueTicketsList = useMemo(() => tickets.filter(t => t.is_overdue && t.status !== 'CLOSED'), [tickets]);
-  const citizenCallPendingList = useMemo(() => tickets.filter(t => t.status === 'RESOLVED_AWAITING_CITIZEN'), [tickets]);
-  const officerPendingList = useMemo(() => tickets.filter(t => t.status === 'REGISTERED' || t.status === 'IN_PROGRESS'), [tickets]);
-  const recentLogsList = useMemo(() => notifications.slice(0, 10), [notifications]);
-
-  const totalActionableCount = pendingIntakesList.length + overdueTicketsList.length + citizenCallPendingList.length;
-
   // Status modal state (custom confirmation & success popup)
   const [statusModalConfig, setStatusModalConfig] = useState<StatusModalConfig>({
     isOpen: false,
@@ -475,6 +444,7 @@ export const DashboardView = ({
   const allRejectedComplaints = useMemo(() => {
     const list: Array<{
       id: string;
+      ticket_number?: string;
       channel: string;
       citizen_name: string;
       citizen_phone: string;
@@ -490,6 +460,7 @@ export const DashboardView = ({
     intakes.filter(i => i.status === 'REJECTED').forEach(i => {
       list.push({
         id: i.id,
+        ticket_number: (i as any).ticket_number || undefined,
         channel: i.intake_channel || 'Citizen Intake',
         citizen_name: i.citizen_name,
         citizen_phone: i.citizen_phone,
@@ -506,6 +477,7 @@ export const DashboardView = ({
     tickets.filter(t => t.status === 'REJECTED').forEach(t => {
       list.push({
         id: t.id,
+        ticket_number: t.ticket_number,
         channel: 'Official Ticket',
         citizen_name: t.citizen_name,
         citizen_phone: t.citizen_phone,
@@ -514,7 +486,7 @@ export const DashboardView = ({
         landmark: t.landmark,
         category_name: t.category_name,
         problem_description: t.problem_description,
-        rejection_reason: t.authority_notes || 'Rejected in Review',
+        rejection_reason: t.escalation_notes || t.authority_notes || 'Rejected in Review',
         received_at: t.registration_time || 'Recently'
       });
     });
@@ -541,6 +513,7 @@ export const DashboardView = ({
       const q = (rejectedSearch || searchQuery).trim().toLowerCase();
       if (q) {
         const textMatch =
+          (item.ticket_number && item.ticket_number.toLowerCase().includes(q)) ||
           item.citizen_name.toLowerCase().includes(q) ||
           item.citizen_phone.includes(q) ||
           item.address.toLowerCase().includes(q) ||
@@ -571,7 +544,36 @@ export const DashboardView = ({
 
   // Real-time KPI Counts (from Master Prompt Section 9)
   const kpis = useMemo(() => {
-    const todayRegistered = tickets.filter(t => t.registration_time.includes('2026-10-20') || t.registration_time.includes('Today')).length;
+    const isTodayRegistration = (t: Ticket) => {
+      if (t.registration_time_iso) {
+        const d = new Date(t.registration_time_iso);
+        if (!isNaN(d.getTime())) {
+          const now = new Date();
+          return (
+            d.getFullYear() === now.getFullYear() &&
+            d.getMonth() === now.getMonth() &&
+            d.getDate() === now.getDate()
+          );
+        }
+      }
+      const str = t.registration_time || '';
+      if (str.includes('Today')) return true;
+      const d = new Date(str);
+      if (!isNaN(d.getTime())) {
+        const now = new Date();
+        return (
+          d.getFullYear() === now.getFullYear() &&
+          d.getMonth() === now.getMonth() &&
+          d.getDate() === now.getDate()
+        );
+      }
+      const now = new Date();
+      const day = String(now.getDate()).padStart(2, '0');
+      const month = String(now.getMonth() + 1).padStart(2, '0');
+      return str.includes(`${day}/${month}`);
+    };
+
+    const todayRegistered = tickets.filter(isTodayRegistration).length;
     const totalComplaints = tickets.length;
     const pendingComplaints = tickets.filter(t => t.status === 'REGISTERED' || t.status === 'IN_PROGRESS' || t.status === 'RESOLVED_AWAITING_CITIZEN').length;
     const confirmedResolvedClosed = tickets.filter(t => t.status === 'CLOSED').length;
@@ -731,6 +733,7 @@ export const DashboardView = ({
   const handleExportRejectedCsv = () => {
     const dateStr = new Date().toISOString().split('T')[0];
     const headers = [
+      'Ticket ID (टिकट सं.)',
       'Channel (माध्यम)',
       'Citizen Name (नागरिक का नाम)',
       'Mobile Number (मोबाइल नंबर)',
@@ -745,6 +748,7 @@ export const DashboardView = ({
     ];
 
     const rows = filteredRejectedComplaints.map(item => [
+      item.ticket_number || 'N/A',
       item.channel,
       item.citizen_name,
       item.citizen_phone,
@@ -1020,17 +1024,72 @@ export const DashboardView = ({
 
     setSelectedIntakeForVerification(null);
 
+    // 1. Generate sequential ticket number for the rejected grievance
+    const ticketNum = generateNextTicketNumber(tickets);
+
+    // 2. Persist to Supabase tickets table with REJECTED status
+    const rejectedTicket: Ticket = {
+      id: `ticket-${Date.now()}`,
+      ticket_number: ticketNum,
+      citizen_name: intake.citizen_name,
+      citizen_phone: intake.citizen_phone,
+      ward_number: intake.ward_number,
+      address: intake.address || 'N/A (Rejected)',
+      landmark: intake.landmark || '',
+      category_name: intake.category_name || 'General Municipal Grievance',
+      department_name: intake.department_name || departments[0]?.name || 'General Administration',
+      problem_description: intake.problem_description || `Rejection: ${reason}`,
+      status: 'REJECTED',
+      forwarding_option: 'OFFICER_ONLY',
+      sla_hours: 0,
+      sla_deadline: 'Rejected',
+      sla_deadline_iso: new Date().toISOString(),
+      is_overdue: false,
+      is_escalated: false,
+      escalation_notes: reason,
+      assigned_officer_name: 'N/A (Rejected)',
+      assigned_officer_phone: 'N/A',
+      registration_time: 'Today ' + new Date().toLocaleTimeString('en-US', { hour: '2-digit', minute: '2-digit' }),
+      registration_time_iso: new Date().toISOString(),
+      closed_at: new Date().toISOString(),
+      authority_confirmed: false,
+      citizen_satisfied: false
+    };
+
+    onAddTicket(rejectedTicket);
+
+    // 3. Update intake status in local queue
     onUpdateIntake({
       ...intake,
       status: 'REJECTED',
       rejection_reason: reason
     });
 
+    // 4. Build official WhatsApp rejection message with Ticket ID
+    const rejectHindiNotice = `स्मार्ट नगर परिषद चित्तौड़गढ़ - शिकायत निस्तारण सूचना\nनमस्ते ${intake.citizen_name} जी,\n\nआपकी शिकायत संख्या: ${ticketNum}\n📍 वार्ड: वार्ड ${intake.ward_number}\nनिर्णय: ❌ अस्वीकृत (Rejected)\n\nअस्वीकृति का आधिकारिक कारण:\n"${reason}"\n\nसूचित किया जाता है कि उपरोक्त कारण से आपकी शिकायत को आधिकारिक रूप से स्वीकार नहीं किया गया है। किसी भी स्पष्टीकरण हेतु नगर परिषद कंट्रोल रूम (01472-240001) पर संपर्क करें।\n\n- पोर्टल कंट्रोल रूम, नगर परिषद चित्तौड़गढ़ 🙏`;
+
+    const waActions: WhatsAppAction[] = [
+      {
+        role: 'CITIZEN',
+        label: `Send Rejection WhatsApp Notice (${intake.citizen_name})`,
+        phone: intake.citizen_phone,
+        recipientName: intake.citizen_name,
+        message: rejectHindiNotice
+      }
+    ];
+
     setStatusModalConfig({
       isOpen: true,
       type: 'warning',
-      title: 'Rejected!',
-      subtitle: `Complaint from ${intake.citizen_name} has been rejected and permanently recorded in the municipal audit trail.`,
+      title: 'Complaint Rejected & Ticket Assigned!',
+      subtitle: `Official Ticket ${ticketNum} assigned to rejected grievance from ${intake.citizen_name} and recorded in Supabase.`,
+      details: [
+        `Ticket ID: ${ticketNum}`,
+        `Citizen: ${intake.citizen_name} (${intake.citizen_phone})`,
+        `Ward: Ward ${intake.ward_number}`,
+        `Rejection Reason: ${reason}`
+      ],
+      whatsAppActions: waActions,
       confirmText: 'OK'
     });
   };
@@ -1464,318 +1523,6 @@ export const DashboardView = ({
             >
               <RefreshCw className="w-4 h-4" />
             </button>
-
-            {/* Interactive Municipal Notifications & Tasks Command Center */}
-            <div className="relative">
-              <button
-                type="button"
-                onClick={() => setShowNotificationsDropdown(prev => !prev)}
-                title={`System Notifications & Work Alerts (${totalActionableCount} Actionable Tasks)`}
-                className="p-2.5 rounded-xl border border-sky-200 bg-white/95 text-sky-800 hover:bg-white hover:text-sky-950 transition-all relative cursor-pointer shadow-2xs"
-              >
-                <Bell className="w-4.5 h-4.5" />
-                {totalActionableCount > 0 ? (
-                  <span className={`absolute -top-1.5 -right-1.5 px-1.5 min-w-[18px] h-[18px] rounded-full text-white font-black text-[10px] shadow-sm flex items-center justify-center ${
-                    overdueTicketsList.length > 0 ? 'bg-rose-600 animate-pulse ring-2 ring-rose-200' : 'bg-blue-600 ring-2 ring-blue-200'
-                  }`}>
-                    {totalActionableCount}
-                  </span>
-                ) : (
-                  <span className="absolute top-1.5 right-1.5 w-2 h-2 rounded-full bg-emerald-500" />
-                )}
-              </button>
-
-              {/* Notification & Tasks Dropdown Panel */}
-              {showNotificationsDropdown && (
-                <div 
-                  ref={notificationDropdownRef}
-                  className="absolute right-0 mt-2.5 w-[340px] sm:w-[460px] md:w-[500px] bg-white rounded-3xl shadow-2xl border border-sky-100 z-50 text-left overflow-hidden animate-in fade-in zoom-in-95 duration-150 ring-1 ring-slate-900/10"
-                  onClick={(e) => e.stopPropagation()}
-                >
-                  {/* Modern Municipal Command Center Header */}
-                  <div className="bg-gradient-to-r from-slate-900 via-sky-950 to-blue-900 px-4 py-3.5 text-white flex items-center justify-between">
-                    <div className="flex items-center gap-2.5">
-                      <div className="p-2 rounded-xl bg-white/10 text-sky-300 border border-white/10 relative">
-                        <Bell className="w-4 h-4" />
-                        {totalActionableCount > 0 && (
-                          <span className="absolute -top-0.5 -right-0.5 w-2 h-2 rounded-full bg-rose-500 animate-ping" />
-                        )}
-                      </div>
-                      <div>
-                        <div className="flex items-center gap-2">
-                          <h4 className="font-extrabold text-sm text-white tracking-tight">
-                            कार्य व अलर्ट केंद्र (Action &amp; Alerts)
-                          </h4>
-                          <span className="px-2 py-0.2 rounded-full bg-sky-500/20 text-sky-300 text-[10px] font-mono font-bold border border-sky-400/30">
-                            {totalActionableCount} Pending
-                          </span>
-                        </div>
-                        <p className="text-[11px] text-sky-200/80 font-medium">
-                          सभी लंबित कार्य, आवक शिकायतें व समय-सीमा ट्रैकिंग
-                        </p>
-                      </div>
-                    </div>
-                    <button
-                      type="button"
-                      onClick={() => setShowNotificationsDropdown(false)}
-                      className="p-1.5 rounded-lg text-slate-300 hover:text-white hover:bg-white/10 transition-colors cursor-pointer"
-                      title="Close notifications"
-                    >
-                      <X className="w-4 h-4" />
-                    </button>
-                  </div>
-
-                  {/* Navigation Filter Pills */}
-                  <div className="px-3 py-2 bg-slate-50/90 border-b border-slate-100 flex items-center gap-1.5 overflow-x-auto text-[11px]">
-                    <button
-                      type="button"
-                      onClick={() => setNotificationTab('ALL')}
-                      className={`px-3 py-1 rounded-full font-bold transition-all cursor-pointer whitespace-nowrap ${
-                        notificationTab === 'ALL'
-                          ? 'bg-blue-600 text-white shadow-2xs'
-                          : 'bg-white text-slate-600 border border-slate-200 hover:bg-slate-100'
-                      }`}
-                    >
-                      सभी कार्य ({pendingIntakesList.length + overdueTicketsList.length + citizenCallPendingList.length})
-                    </button>
-                    <button
-                      type="button"
-                      onClick={() => setNotificationTab('TASKS')}
-                      className={`px-3 py-1 rounded-full font-bold transition-all cursor-pointer whitespace-nowrap ${
-                        notificationTab === 'TASKS'
-                          ? 'bg-blue-600 text-white shadow-2xs'
-                          : 'bg-white text-slate-600 border border-slate-200 hover:bg-slate-100'
-                      }`}
-                    >
-                      आवक व सत्यापन ({pendingIntakesList.length + citizenCallPendingList.length})
-                    </button>
-                    <button
-                      type="button"
-                      onClick={() => setNotificationTab('SLA')}
-                      className={`px-3 py-1 rounded-full font-bold transition-all cursor-pointer whitespace-nowrap ${
-                        notificationTab === 'SLA'
-                          ? 'bg-rose-600 text-white shadow-2xs'
-                          : 'bg-white text-rose-700 border border-rose-200 hover:bg-rose-50'
-                      }`}
-                    >
-                      SLA उल्लंघन ({overdueTicketsList.length})
-                    </button>
-                    <button
-                      type="button"
-                      onClick={() => setNotificationTab('LOGS')}
-                      className={`px-3 py-1 rounded-full font-bold transition-all cursor-pointer whitespace-nowrap ${
-                        notificationTab === 'LOGS'
-                          ? 'bg-emerald-600 text-white shadow-2xs'
-                          : 'bg-white text-slate-600 border border-slate-200 hover:bg-slate-100'
-                      }`}
-                    >
-                      WhatsApp संदेश ({recentLogsList.length})
-                    </button>
-                  </div>
-
-                  {/* Notifications Feed */}
-                  <div className="max-h-80 overflow-y-auto p-3 space-y-2.5 divide-y divide-slate-100">
-                    {/* 1. Critical SLA Overdue Breaches */}
-                    {(notificationTab === 'ALL' || notificationTab === 'SLA') && overdueTicketsList.map(ticket => (
-                      <div 
-                        key={`sla-${ticket.id}`}
-                        onClick={() => {
-                          setActiveTab('SLA');
-                          setShowNotificationsDropdown(false);
-                        }}
-                        className="p-3 rounded-2xl bg-rose-50/70 border border-rose-200/90 hover:bg-rose-100/70 transition-all cursor-pointer space-y-1.5 shadow-2xs"
-                      >
-                        <div className="flex items-center justify-between">
-                          <span className="font-extrabold text-xs text-rose-900 flex items-center gap-1.5">
-                            <AlertTriangle className="w-4 h-4 text-rose-600 shrink-0" />
-                            <span>SLA समय-सीमा उल्लंघन: {ticket.ticket_number}</span>
-                          </span>
-                          <span className="text-[10px] font-mono font-bold text-rose-700 bg-rose-200/80 px-2 py-0.5 rounded-full">
-                            वार्ड {ticket.ward_number}
-                          </span>
-                        </div>
-                        <p className="text-xs text-slate-800 font-semibold truncate">
-                          {ticket.category_name} &bull; {ticket.citizen_name}
-                        </p>
-                        <div className="flex items-center justify-between text-[11px] text-rose-700 pt-0.5">
-                          <span>समय-सीमा समाप्त: {formatDeadlineIST(ticket.sla_deadline)}</span>
-                          <span className="font-bold underline text-rose-800 hover:text-rose-900">जाँच करें (Inspect) ➔</span>
-                        </div>
-                      </div>
-                    ))}
-
-                    {/* 2. New Incoming Intakes Pending Verification */}
-                    {(notificationTab === 'ALL' || notificationTab === 'TASKS') && pendingIntakesList.map(intake => (
-                      <div 
-                        key={`intake-${intake.id}`}
-                        onClick={() => {
-                          setSelectedIntakeForVerification(intake);
-                          setShowNotificationsDropdown(false);
-                        }}
-                        className="p-3 rounded-2xl bg-amber-50/70 border border-amber-200/90 hover:bg-amber-100/70 transition-all cursor-pointer space-y-1.5 shadow-2xs pt-2.5"
-                      >
-                        <div className="flex items-center justify-between">
-                          <span className="font-extrabold text-xs text-amber-900 flex items-center gap-1.5">
-                            <Inbox className="w-4 h-4 text-amber-600 shrink-0" />
-                            <span>नई आवक शिकायत (सत्यापन शेष)</span>
-                          </span>
-                          <span className="text-[10px] font-bold text-amber-800 bg-amber-200/80 px-2 py-0.5 rounded-full">
-                            {intake.intake_channel === 'WHATSAPP' ? 'WhatsApp 24/7' : 'Helpline Call'}
-                          </span>
-                        </div>
-                        <p className="text-xs text-slate-800 font-semibold truncate">
-                          {intake.citizen_name} ({intake.citizen_phone}) &bull; वार्ड {intake.ward_number}
-                        </p>
-                        <p className="text-[11px] text-slate-600 line-clamp-1">
-                          {intake.problem_description}
-                        </p>
-                        <div className="flex items-center justify-between text-[11px] text-amber-800 pt-0.5">
-                          <span>प्राप्त समय: {intake.received_at}</span>
-                          <span className="font-bold underline text-amber-900 hover:text-amber-950">सत्यापित व स्वीकार करें ➔</span>
-                        </div>
-                      </div>
-                    ))}
-
-                    {/* 3. Citizen Confirmation Calls Pending (Step 2) */}
-                    {(notificationTab === 'ALL' || notificationTab === 'TASKS') && citizenCallPendingList.map(ticket => (
-                      <div 
-                        key={`confirm-${ticket.id}`}
-                        onClick={() => {
-                          setSelectedTicketForClosure(ticket);
-                          setShowNotificationsDropdown(false);
-                        }}
-                        className="p-3 rounded-2xl bg-purple-50/70 border border-purple-200/90 hover:bg-purple-100/70 transition-all cursor-pointer space-y-1.5 shadow-2xs pt-2.5"
-                      >
-                        <div className="flex items-center justify-between">
-                          <span className="font-extrabold text-xs text-purple-900 flex items-center gap-1.5">
-                            <Phone className="w-4 h-4 text-purple-600 shrink-0" />
-                            <span>नागरिक संतुष्टि पुष्टि कॉल शेष: {ticket.ticket_number}</span>
-                          </span>
-                          <span className="text-[10px] font-bold text-purple-800 bg-purple-200/80 px-2 py-0.5 rounded-full">
-                            स्टेप 2 कॉल
-                          </span>
-                        </div>
-                        <p className="text-xs text-slate-800 font-semibold truncate">
-                          {ticket.citizen_name} &bull; {ticket.citizen_phone}
-                        </p>
-                        <p className="text-[11px] text-purple-700">
-                          अधिकारी द्वारा कार्य पूर्ण। नागरिक से कॉल पर पुष्टि कर 2-Step क्लोजर पूर्ण करें।
-                        </p>
-                        <div className="flex items-center justify-between text-[11px] text-purple-800 pt-0.5">
-                          <span>वार्ड {ticket.ward_number}</span>
-                          <span className="font-bold underline text-purple-900 hover:text-purple-950">कॉल व संतुष्टि दर्ज करें ➔</span>
-                        </div>
-                      </div>
-                    ))}
-
-                    {/* 4. Active Officer Resolution Tickets (Step 1 Pending) */}
-                    {(notificationTab === 'TASKS') && officerPendingList.map(ticket => (
-                      <div 
-                        key={`officer-${ticket.id}`}
-                        onClick={() => {
-                          setActiveTab('TICKETS');
-                          setShowNotificationsDropdown(false);
-                        }}
-                        className="p-3 rounded-2xl bg-blue-50/70 border border-blue-200/90 hover:bg-blue-100/70 transition-all cursor-pointer space-y-1.5 shadow-2xs pt-2.5"
-                      >
-                        <div className="flex items-center justify-between">
-                          <span className="font-extrabold text-xs text-blue-900 flex items-center gap-1.5">
-                            <ClockAlert className="w-4 h-4 text-blue-600 shrink-0" />
-                            <span>अधिकारी कार्यवाही जारी: {ticket.ticket_number}</span>
-                          </span>
-                          <span className="text-[10px] font-bold text-blue-800 bg-blue-200/80 px-2 py-0.5 rounded-full">
-                            स्टेप 1
-                          </span>
-                        </div>
-                        <p className="text-xs text-slate-800 font-semibold truncate">
-                          {ticket.department_name} &bull; {ticket.citizen_name}
-                        </p>
-                        <div className="flex items-center justify-between text-[11px] text-blue-800 pt-0.5">
-                          <span>वार्ड {ticket.ward_number} • Target: {formatDeadlineIST(ticket.sla_deadline)}</span>
-                          <span className="font-bold underline text-blue-900 hover:text-blue-950">देखें ➔</span>
-                        </div>
-                      </div>
-                    ))}
-
-                    {/* 4. Recent Automated WhatsApp Logs */}
-                    {(notificationTab === 'LOGS') && recentLogsList.map(log => (
-                      <div 
-                        key={`log-${log.id}`}
-                        className="p-3 rounded-2xl bg-emerald-50/70 border border-emerald-200/90 space-y-1.5 shadow-2xs pt-2.5"
-                      >
-                        <div className="flex items-center justify-between">
-                          <span className="font-extrabold text-xs text-emerald-900 flex items-center gap-1.5">
-                            <MessageSquare className="w-4 h-4 text-emerald-600 shrink-0" />
-                            <span>WhatsApp संदेश: {log.ticket_number}</span>
-                          </span>
-                          <span className="text-[10px] font-bold text-emerald-800 bg-emerald-200/80 px-2 py-0.5 rounded-full font-mono">
-                            {log.recipient_type}
-                          </span>
-                        </div>
-                        <p className="text-xs text-slate-800 font-semibold truncate">
-                          {log.recipient_name} ({log.recipient_phone})
-                        </p>
-                        <p className="text-[11px] text-slate-600 line-clamp-2 bg-white/80 p-1.5 rounded-lg border border-emerald-100 font-mono text-[10px]">
-                          {log.message_content}
-                        </p>
-                        <div className="flex items-center justify-between text-[10px] text-emerald-700 pt-0.5">
-                          <span>स्टेटस: {log.status}</span>
-                          <span>{log.sent_at}</span>
-                        </div>
-                      </div>
-                    ))}
-
-                    {/* Empty State */}
-                    {((notificationTab === 'ALL' && totalActionableCount === 0) ||
-                      (notificationTab === 'TASKS' && pendingIntakesList.length === 0 && citizenCallPendingList.length === 0) ||
-                      (notificationTab === 'SLA' && overdueTicketsList.length === 0) ||
-                      (notificationTab === 'LOGS' && recentLogsList.length === 0)) && (
-                      <div className="py-8 text-center text-slate-400 space-y-2">
-                        <CheckCircle2 className="w-10 h-10 mx-auto text-emerald-500" />
-                        <p className="text-xs font-bold text-slate-700">कोई लंबित कार्य नहीं (All Clear)</p>
-                        <p className="text-[11px] text-slate-400">सभी आवक शिकायतें, सत्यापन व SLA समय-सीमाएं सामान्य हैं।</p>
-                      </div>
-                    )}
-                  </div>
-
-                  {/* Panel Quick Actions Footer */}
-                  <div className="bg-slate-50 border-t border-slate-100 p-2.5 flex items-center justify-between text-xs gap-2">
-                    <button
-                      type="button"
-                      onClick={() => {
-                        setActiveTab('CLOSED');
-                        setSelectedStatus('CLOSED');
-                        setShowNotificationsDropdown(false);
-                      }}
-                      className="flex-1 py-1.5 px-2 rounded-xl bg-emerald-50 hover:bg-emerald-100 text-emerald-800 border border-emerald-200 font-bold text-[11px] text-center transition-colors cursor-pointer"
-                    >
-                      पूर्ण शिकायतें ({kpis.confirmedResolvedClosed})
-                    </button>
-                    <button
-                      type="button"
-                      onClick={() => {
-                        setActiveTab('TICKETS');
-                        setSelectedStatus('ALL');
-                        setShowNotificationsDropdown(false);
-                      }}
-                      className="flex-1 py-1.5 px-2 rounded-xl bg-blue-50 hover:bg-blue-100 text-blue-800 border border-blue-200 font-bold text-[11px] text-center transition-colors cursor-pointer"
-                    >
-                      सभी शिकायतें ({tickets.length})
-                    </button>
-                    <button
-                      type="button"
-                      onClick={() => {
-                        setActiveTab('SLA');
-                        setShowNotificationsDropdown(false);
-                      }}
-                      className="flex-1 py-1.5 px-2 rounded-xl bg-rose-600 hover:bg-rose-700 text-white font-bold text-[11px] text-center transition-colors shadow-2xs cursor-pointer"
-                    >
-                      SLA Breached ({overdueTicketsList.length})
-                    </button>
-                  </div>
-                </div>
-              )}
-            </div>
 
             {/* Register New Complaint button (Prominent Primary Button with upcoming Ticket Number) */}
             <button
@@ -2868,6 +2615,11 @@ export const DashboardView = ({
                       <div key={item.id} className="p-4 space-y-3 bg-white hover:bg-slate-50 transition-colors">
                         <div className="flex items-center justify-between gap-2">
                           <div className="flex items-center gap-1.5 flex-wrap">
+                            {item.ticket_number && (
+                              <span className="px-2 py-0.5 rounded text-[10px] font-mono font-bold bg-rose-100 text-rose-800 border border-rose-300 shadow-2xs">
+                                {item.ticket_number}
+                              </span>
+                            )}
                             <span className="px-2 py-0.5 rounded-full text-[10px] font-bold border border-slate-300 bg-slate-100 text-slate-700">
                               {item.channel}
                             </span>
@@ -2937,6 +2689,7 @@ export const DashboardView = ({
                   <table className="w-full min-w-[1050px] print:min-w-full border-collapse border border-slate-400 text-left text-xs text-slate-800">
                     <thead className="bg-slate-100 print:static border-b-2 border-slate-500 font-bold uppercase tracking-wider text-[11px] text-slate-800 select-none">
                       <tr>
+                        <th className="px-4 py-3.5 border-r border-slate-400 w-[130px] min-w-[130px] whitespace-nowrap">Ticket ID</th>
                         <th className="px-4 py-3.5 border-r border-slate-400 w-[150px] min-w-[150px] whitespace-nowrap">Channel &amp; Time</th>
                         <th className="px-4 py-3.5 border-r border-slate-400 w-[170px] min-w-[170px] whitespace-nowrap">Citizen Info</th>
                         <th className="px-4 py-3.5 border-r border-slate-400 w-[190px] min-w-[190px]">Ward &amp; Locality</th>
@@ -2949,7 +2702,7 @@ export const DashboardView = ({
                     <tbody className="divide-y divide-slate-400 bg-white">
                       {filteredRejectedComplaints.length === 0 ? (
                         <tr>
-                          <td colSpan={7} className="px-6 py-12 text-center text-slate-400">
+                          <td colSpan={8} className="px-6 py-12 text-center text-slate-400">
                             <div className="flex flex-col items-center justify-center space-y-2">
                               <XCircle className="w-8 h-8 text-slate-300" />
                               <p className="font-semibold text-slate-600">No Rejected Complaints Found</p>
@@ -2964,6 +2717,17 @@ export const DashboardView = ({
                       ) : (
                         filteredRejectedComplaints.map((item) => (
                           <tr key={item.id} className="hover:bg-rose-50/40 even:bg-slate-50/50 transition-colors">
+                            {/* Ticket ID */}
+                            <td className="px-4 py-3.5 border-r border-slate-400 align-middle whitespace-nowrap">
+                              {item.ticket_number ? (
+                                <span className="font-mono font-bold text-xs text-rose-800 bg-rose-50 border border-rose-200 px-2.5 py-1 rounded-md inline-block shadow-2xs">
+                                  {item.ticket_number}
+                                </span>
+                              ) : (
+                                <span className="text-slate-400 font-mono text-xs italic">N/A</span>
+                              )}
+                            </td>
+
                             {/* Channel & Time */}
                             <td className="px-4 py-3.5 border-r border-slate-400 align-middle whitespace-nowrap">
                               <span className="inline-flex items-center gap-1.5 px-2.5 py-1 rounded-full text-[11px] font-bold border border-slate-300 bg-slate-100 text-slate-700">
@@ -3625,32 +3389,47 @@ export const DashboardView = ({
             }
 
             if (data.decision === 'REJECT') {
-              const newIntake: IntakeComplaint = {
-                id: `intake-${Date.now()}`,
-                intake_channel: data.intake_channel,
+              // 1. Assign sequential Ticket ID for rejected complaint
+              const ticketNum = data.ticket_number || generateNextTicketNumber(tickets);
+
+              // 2. Persist to Supabase tickets table as an official REJECTED ticket
+              const rejectedTicket: Ticket = {
+                id: `ticket-${Date.now()}`,
+                ticket_number: ticketNum,
                 citizen_name: data.citizen_name,
                 citizen_phone: data.citizen_phone,
                 ward_number: data.ward_number,
-                address: data.address,
+                address: data.address || 'N/A (Rejected)',
                 landmark: data.landmark || '',
                 category_name: data.category_name,
-                department_name: data.department_name || 'N/A (Rejected)',
-                problem_description: data.problem_description,
+                department_name: data.department_name || departments[0]?.name || 'General Municipal Administration',
+                problem_description: data.problem_description || `Rejection: ${data.rejection_reason}`,
                 status: 'REJECTED',
-                rejection_reason: data.rejection_reason || 'Rejected by Portal Manager',
-                is_after_hours: false,
-                received_at: 'Today ' + new Date().toLocaleTimeString('en-US', { hour: '2-digit', minute: '2-digit' })
+                forwarding_option: 'COUNCILLOR_AND_OFFICER',
+                sla_hours: 0,
+                sla_deadline: 'Rejected',
+                sla_deadline_iso: new Date().toISOString(),
+                is_overdue: false,
+                is_escalated: false,
+                escalation_notes: data.rejection_reason || 'Rejected by Portal Manager',
+                assigned_officer_name: 'N/A (Rejected)',
+                assigned_officer_phone: 'N/A',
+                registration_time: 'Today ' + new Date().toLocaleTimeString('en-US', { hour: '2-digit', minute: '2-digit' }),
+                registration_time_iso: new Date().toISOString(),
+                closed_at: new Date().toISOString(),
+                authority_confirmed: false,
+                citizen_satisfied: false
               };
 
-              onAddIntake(newIntake);
+              onAddTicket(rejectedTicket);
 
-              // If automated WhatsApp notice to citizen was selected
+              // 3. Build WhatsApp notice with official Ticket Number
+              const rejectHindiNotice = `स्मार्ट नगर परिषद चित्तौड़गढ़ - शिकायत निस्तारण सूचना\nनमस्ते ${data.citizen_name} जी,\n\nआपकी शिकायत संख्या: ${ticketNum}\n📍 वार्ड: वार्ड ${data.ward_number}\n📝 श्रेणी: ${data.category_name}\nनिर्णय: ❌ अस्वीकृत (Rejected)\n\nअस्वीकृति का आधिकारिक कारण:\n"${data.rejection_reason || 'दिशानिर्देशों के अनुरूप नहीं'}"\n\nसूचित किया जाता है कि उपरोक्त कारण से आपकी शिकायत को आधिकारिक रूप से स्वीकार नहीं किया गया है। किसी भी स्पष्टीकरण हेतु नगर परिषद कंट्रोल रूम (01472-240001) पर संपर्क करें।\n\n- पोर्टल कंट्रोल रूम, नगर परिषद चित्तौड़गढ़ 🙏`;
+
               if (data.notify_citizen) {
-                const rejectHindiNotice = `नमस्कार ${data.citizen_name},\n\nस्मार्ट नगर परिषद चित्तौड़गढ़ में आपकी शिकायत दर्ज कराने के संबंध में:\n\nशिकायत श्रेणी: ${data.category_name}\nस्थान: ${data.address}, वार्ड ${data.ward_number}\nनिर्णय: अस्वीकृत (Rejected)\nअस्वीकृति का कारण: ${data.rejection_reason || 'दिशानिर्देशों के अनुरूप नहीं'}\n\nसूचित किया जाता है कि उपरोक्त कारण से आपकी शिकायत को आधिकारिक रूप से स्वीकार नहीं किया गया है। किसी भी स्पष्टीकरण हेतु नगर परिषद कार्यालय में संपर्क करें।\n\nधन्यवाद,\nस्मार्ट नगर परिषद चित्तौड़गढ़`;
-
                 const rejectNotif: NotificationLog = {
                   id: `notif-${Date.now()}`,
-                  ticket_number: `INTAKE-REJ-${newIntake.id.slice(-6).toUpperCase()}`,
+                  ticket_number: ticketNum,
                   recipient_type: 'CITIZEN',
                   recipient_name: data.citizen_name,
                   recipient_phone: data.citizen_phone,
@@ -3663,20 +3442,32 @@ export const DashboardView = ({
                 onAddNotification(rejectNotif);
               }
 
+              const waActions: WhatsAppAction[] = [
+                {
+                  role: 'CITIZEN',
+                  label: `Send WhatsApp Rejection Notice (${data.citizen_name})`,
+                  phone: data.citizen_phone,
+                  recipientName: data.citizen_name,
+                  message: rejectHindiNotice
+                }
+              ];
+
               setShowNewComplaintModal(false);
-              setActiveTab('INTAKE');
-              setIntakeFilterStatus('REJECTED');
+              setActiveTab('REJECTED');
 
               setStatusModalConfig({
                 isOpen: true,
                 type: 'warning',
-                title: 'Rejected!',
-                subtitle: `Complaint from ${data.citizen_name} has been rejected and recorded in the municipal audit trail.`,
+                title: 'Official Ticket Assigned & Rejected!',
+                subtitle: `Complaint from ${data.citizen_name} has been assigned Ticket ${ticketNum} and recorded in Supabase.`,
                 details: [
+                  `Assigned Ticket ID: ${ticketNum}`,
                   `Citizen: ${data.citizen_name} (${data.citizen_phone})`,
+                  `Ward & Locality: Ward ${data.ward_number} - ${data.address}`,
                   `Rejection Reason: ${data.rejection_reason || 'Rejected by Portal Manager'}`,
-                  `Citizen WhatsApp Notice: ${data.notify_citizen ? 'Dispatched' : 'Skipped / Not Sent (Silent)'}`
+                  `Citizen WhatsApp Notice: ${data.notify_citizen ? 'Dispatched' : 'Skipped / Optional'}`
                 ],
+                whatsAppActions: waActions,
                 confirmText: 'OK'
               });
               return;
