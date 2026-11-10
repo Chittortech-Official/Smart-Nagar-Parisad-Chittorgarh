@@ -18,6 +18,7 @@ import { cleanPhoneForWhatsApp } from '../lib/whatsapp';
 import type { StatusModalConfig, WhatsAppAction } from './StatusModal';
 import { AdminFooter } from './AdminFooter';
 import { HelpSupportView } from './HelpSupportView';
+import { DatabaseBackupSection } from './DatabaseBackupSection';
 import { generateNextTicketNumber, formatDeadlineIST } from '../utils/ticketGenerator';
 import { 
   LayoutDashboard, 
@@ -73,6 +74,7 @@ interface DashboardViewProps {
   onAddDepartment?: (dept: Department) => Promise<void> | void;
   onDeleteDepartment?: (deptId: string) => Promise<void> | void;
   onRefreshData?: () => Promise<void> | void;
+  onRestoreAllData?: (data: any) => Promise<{ success: boolean; message: string; counts?: any }>;
 }
 
 const TAB_HEADER_METADATA: Record<string, { title: string; hindi: string; icon: any; bg: string }> = {
@@ -162,7 +164,8 @@ export const DashboardView = ({
   onUpdateDepartment,
   onAddDepartment,
   onDeleteDepartment,
-  onRefreshData
+  onRefreshData,
+  onRestoreAllData
 }: DashboardViewProps) => {
 
   const [activeTab, setActiveTab] = useState<'DASHBOARD' | 'INTAKE' | 'TICKETS' | 'CLOSED' | 'REJECTED' | 'REOPENED' | 'SLA' | 'WARDS' | 'DEPARTMENTS' | 'SETTINGS' | 'SUPPORT'>('DASHBOARD');
@@ -512,6 +515,7 @@ export const DashboardView = ({
       if (ticket.status === 'REJECTED') return false;
       if (activeTab === 'CLOSED' && ticket.status !== 'CLOSED') return false;
       if (activeTab === 'REOPENED' && ticket.status !== 'REOPENED' && !ticket.is_reopened && (ticket.reopen_count ?? 0) <= 0) return false;
+      if (activeTab === 'SLA' && (!ticket.is_overdue || ticket.status === 'CLOSED')) return false;
 
       // Advanced 2-Step Closure Status Filtering
       if (selectedStatus !== 'ALL') {
@@ -564,7 +568,7 @@ export const DashboardView = ({
   // Derived active tickets based on SLA / All / Closed / Reopened
   const activeTicketsList = useMemo(() => {
     if (activeTab === 'SLA') {
-      return filteredTickets.filter(t => t.is_overdue || t.is_escalated);
+      return filteredTickets.filter(t => t.is_overdue && t.status !== 'CLOSED' && t.status !== 'REJECTED');
     }
     if (activeTab === 'REOPENED') {
       return filteredTickets.filter(t => t.status === 'REOPENED' || Boolean(t.is_reopened) || (t.reopen_count ?? 0) > 0);
@@ -1782,7 +1786,7 @@ export const DashboardView = ({
                   ? `${allRejectedComplaints.length} अस्वीकृत शिकायतें`
                   : activeTab === 'REOPENED'
                   ? `${reopenedTickets.length} पुनः खुली शिकायतें`
-                  : `${activeTab === 'CLOSED' ? tickets.filter(t => t.status === 'CLOSED').length : filteredTickets.length} शिकायतें`}
+                  : `${activeTab === 'CLOSED' ? tickets.filter(t => t.status === 'CLOSED').length : activeTab === 'SLA' ? activeTicketsList.length : filteredTickets.length} शिकायतें`}
               </span>
               <span>
                 <strong>प्रिंट दिनांक:</strong>{' '}
@@ -2235,7 +2239,7 @@ export const DashboardView = ({
                           : 'text-slate-600 hover:text-slate-900'
                       }`}
                     >
-                      All ({scopeTickets.filter(t => t.status !== 'REJECTED').length})
+                      All ({activeTab === 'SLA' ? scopeTickets.filter(t => t.is_overdue && t.status !== 'CLOSED' && t.status !== 'REJECTED').length : scopeTickets.filter(t => t.status !== 'REJECTED').length})
                     </button>
 
                     {/* Step 1: Officer Verification Baaki */}
@@ -2252,7 +2256,7 @@ export const DashboardView = ({
                       }`}
                     >
                       <ShieldCheck className="w-3.5 h-3.5" />
-                      <span>Step 1: Officer Pending ({scopeTickets.filter(t => !t.authority_confirmed && t.status !== 'CLOSED' && t.status !== 'REJECTED').length})</span>
+                      <span>Step 1: Officer Pending ({activeTab === 'SLA' ? scopeTickets.filter(t => t.is_overdue && !t.authority_confirmed && t.status !== 'CLOSED' && t.status !== 'REJECTED').length : scopeTickets.filter(t => !t.authority_confirmed && t.status !== 'CLOSED' && t.status !== 'REJECTED').length})</span>
                     </button>
 
                     {/* Step 2: Citizen Confirmation Baaki */}
@@ -2269,25 +2273,27 @@ export const DashboardView = ({
                       }`}
                     >
                       <Phone className="w-3.5 h-3.5" />
-                      <span>Step 2: Citizen Call Pending ({scopeTickets.filter(t => t.authority_confirmed && t.status !== 'CLOSED' && t.status !== 'REJECTED').length})</span>
+                      <span>Step 2: Citizen Call Pending ({activeTab === 'SLA' ? scopeTickets.filter(t => t.is_overdue && t.authority_confirmed && t.status !== 'CLOSED' && t.status !== 'REJECTED').length : scopeTickets.filter(t => t.authority_confirmed && t.status !== 'CLOSED' && t.status !== 'REJECTED').length})</span>
                     </button>
 
-                    {/* Both Complete: Closed */}
-                    <button
-                      type="button"
-                      onClick={() => {
-                        setActiveTab('CLOSED');
-                        setSelectedStatus('CLOSED');
-                      }}
-                      className={`px-3 py-1.5 rounded-lg text-xs font-bold transition-all flex items-center gap-1.5 cursor-pointer ${
-                        activeTab === 'CLOSED' || selectedStatus === 'CLOSED'
-                          ? 'bg-emerald-600 text-white shadow-xs'
-                          : 'text-emerald-700 hover:bg-emerald-50'
-                      }`}
-                    >
-                      <CheckCircle2 className="w-3.5 h-3.5" />
-                      <span>2-Step Complete ({scopeTickets.filter(t => t.status === 'CLOSED').length})</span>
-                    </button>
+                    {/* Both Complete: Closed (Hidden in SLA tab as completed tickets are resolved) */}
+                    {activeTab !== 'SLA' && (
+                      <button
+                        type="button"
+                        onClick={() => {
+                          setActiveTab('CLOSED');
+                          setSelectedStatus('CLOSED');
+                        }}
+                        className={`px-3 py-1.5 rounded-lg text-xs font-bold transition-all flex items-center gap-1.5 cursor-pointer ${
+                          activeTab === 'CLOSED' || selectedStatus === 'CLOSED'
+                            ? 'bg-emerald-600 text-white shadow-xs'
+                            : 'text-emerald-700 hover:bg-emerald-50'
+                        }`}
+                      >
+                        <CheckCircle2 className="w-3.5 h-3.5" />
+                        <span>2-Step Complete ({scopeTickets.filter(t => t.status === 'CLOSED').length})</span>
+                      </button>
+                    )}
                   </div>
 
                   {/* Export & Print Action Buttons */}
@@ -3592,6 +3598,17 @@ export const DashboardView = ({
                   </table>
                 </div>
               </div>
+
+              {/* Row 3: Disaster Recovery & Database Backup / Restore Section */}
+              <DatabaseBackupSection
+                tickets={tickets}
+                intakes={intakes}
+                wards={wards}
+                departments={departments}
+                userEmail={userEmail}
+                onRestoreAllData={onRestoreAllData || (async () => ({ success: false, message: 'Restore handler not available' }))}
+                onRefreshData={onRefreshData}
+              />
             </div>
           )}
 

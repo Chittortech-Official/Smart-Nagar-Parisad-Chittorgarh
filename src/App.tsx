@@ -422,6 +422,14 @@ export function App() {
           catId = anyCat?.[0]?.id || null;
         }
 
+        const integerSlaHours = newTicket.status === 'REJECTED'
+          ? 0
+          : (newTicket.sla_hours && newTicket.sla_hours < 1 ? 1 : Math.round(newTicket.sla_hours || 24));
+
+        const slaDeadlineIso = newTicket.status === 'REJECTED'
+          ? new Date().toISOString()
+          : (newTicket.sla_deadline_iso || new Date(Date.now() + (newTicket.sla_hours || 24) * 3600000).toISOString());
+
         const { data: insertedTicket, error } = await supabase.from('tickets').insert([{
           ticket_number: newTicket.ticket_number,
           citizen_name: newTicket.citizen_name,
@@ -434,8 +442,8 @@ export function App() {
           problem_description: newTicket.problem_description,
           status: newTicket.status,
           forwarding_option: newTicket.forwarding_option || 'COUNCILLOR_AND_OFFICER',
-          sla_hours: newTicket.sla_hours || 0,
-          sla_deadline: newTicket.status === 'REJECTED' ? new Date().toISOString() : new Date(Date.now() + (newTicket.sla_hours || 24) * 3600000).toISOString(),
+          sla_hours: integerSlaHours,
+          sla_deadline: slaDeadlineIso,
           escalation_notes: newTicket.escalation_notes || null,
           closed_at: newTicket.status === 'REJECTED' ? (newTicket.closed_at || new Date().toISOString()) : (newTicket.closed_at || null)
         }]).select('id, ticket_number').single();
@@ -601,6 +609,148 @@ export function App() {
     }
   };
 
+  const handleRestoreAllData = async (backupPayload: any): Promise<{ success: boolean; message: string; counts?: any }> => {
+    try {
+      const data = backupPayload.data || backupPayload;
+      const backupTickets: Ticket[] = data.tickets || [];
+      const backupIntakes: IntakeComplaint[] = data.complaint_intakes || data.intakes || [];
+      const backupWards: Ward[] = data.wards || [];
+      const backupDepts: Department[] = data.departments || [];
+
+      // 1. Restore to Local State & LocalStorage immediately
+      if (backupWards.length > 0) {
+        const sortedWards = [...backupWards].sort((a, b) => a.ward_number - b.ward_number);
+        setWards(sortedWards);
+        localStorage.setItem('snp_chittorgarh_wards_v3', JSON.stringify(sortedWards));
+      }
+
+      if (backupDepts.length > 0) {
+        setDepartments(backupDepts);
+        localStorage.setItem('snp_chittorgarh_departments', JSON.stringify(backupDepts));
+      }
+
+      if (backupIntakes.length > 0) {
+        setIntakes(backupIntakes);
+        localStorage.setItem('snp_chittorgarh_intakes', JSON.stringify(backupIntakes));
+      }
+
+      if (backupTickets.length > 0) {
+        setTickets(backupTickets);
+        localStorage.setItem('snp_chittorgarh_tickets_cgr_v1', JSON.stringify(backupTickets));
+        localStorage.setItem('snp_chittorgarh_tickets', JSON.stringify(backupTickets));
+      }
+
+      // 2. If Supabase is connected, bulk sync to PostgreSQL Central Database
+      if (supabase) {
+        // Upsert Departments
+        if (backupDepts.length > 0) {
+          for (const d of backupDepts) {
+            await supabase.from('departments').upsert({
+              name: d.name,
+              code: d.code,
+              default_sla_hours: d.default_sla_hours || 48,
+              head_officer_name: d.head_officer_name,
+              head_officer_phone: d.head_officer_phone
+            }, { onConflict: 'name' });
+          }
+        }
+
+        // Upsert Wards
+        if (backupWards.length > 0) {
+          for (const w of backupWards) {
+            await supabase.from('wards').upsert({
+              ward_number: w.ward_number,
+              ward_name: w.ward_name,
+              councillor_name: w.councillor_name,
+              councillor_phone: w.councillor_phone,
+              zone: w.zone || 'Central Zone',
+              key_landmarks: w.key_landmarks || ''
+            }, { onConflict: 'ward_number' });
+          }
+        }
+
+        // Upsert Complaint Intakes
+        if (backupIntakes.length > 0) {
+          for (const i of backupIntakes) {
+            await supabase.from('complaint_intakes').upsert({
+              intake_channel: i.intake_channel || 'HELPLINE_CALL',
+              citizen_name: i.citizen_name,
+              citizen_phone: i.citizen_phone,
+              ward_number: i.ward_number,
+              address: i.address,
+              landmark: i.landmark || '',
+              problem_description: i.problem_description,
+              status: i.status || 'PENDING_REVIEW',
+              rejection_reason: i.rejection_reason || null,
+              is_after_hours: Boolean(i.is_after_hours)
+            });
+          }
+        }
+
+        // Upsert Tickets
+        if (backupTickets.length > 0) {
+          const { data: dbDepts } = await supabase.from('departments').select('id, name');
+          const { data: dbCats } = await supabase.from('complaint_categories').select('id, department_id, name');
+          const defaultDeptId = dbDepts?.[0]?.id;
+          const defaultCatId = dbCats?.[0]?.id;
+
+          for (const t of backupTickets) {
+            const matchedDeptId = dbDepts?.find(d => d.name === t.department_name)?.id || defaultDeptId;
+            const matchedCatId = dbCats?.find(c => c.department_id === matchedDeptId)?.id || defaultCatId;
+
+            const integerSlaHours = t.status === 'REJECTED'
+              ? 0
+              : (t.sla_hours && t.sla_hours < 1 ? 1 : Math.round(t.sla_hours || 24));
+
+            const slaDeadlineIso = t.status === 'REJECTED'
+              ? new Date().toISOString()
+              : (t.sla_deadline_iso || new Date(Date.now() + (t.sla_hours || 24) * 3600000).toISOString());
+
+            await supabase.from('tickets').upsert({
+              ticket_number: t.ticket_number,
+              citizen_name: t.citizen_name,
+              citizen_phone: t.citizen_phone,
+              ward_number: t.ward_number,
+              address: t.address,
+              landmark: t.landmark || '',
+              department_id: matchedDeptId,
+              category_id: matchedCatId,
+              problem_description: t.problem_description,
+              status: t.status,
+              forwarding_option: t.forwarding_option || 'COUNCILLOR_AND_OFFICER',
+              sla_hours: integerSlaHours,
+              sla_deadline: slaDeadlineIso,
+              is_overdue: Boolean(t.is_overdue),
+              is_escalated: Boolean(t.is_escalated),
+              escalation_notes: t.escalation_notes || null,
+              closed_at: t.closed_at || null
+            }, { onConflict: 'ticket_number' });
+          }
+        }
+
+        // Re-sync live data from Supabase
+        await fetchLiveDbData();
+      }
+
+      return {
+        success: true,
+        message: `सफलतापूर्वक ${backupTickets.length} शिकायतें, ${backupIntakes.length} इंटेक, ${backupWards.length} वार्ड व ${backupDepts.length} विभाग रीस्टोर कर दिए गए हैं।`,
+        counts: {
+          tickets: backupTickets.length,
+          intakes: backupIntakes.length,
+          wards: backupWards.length,
+          departments: backupDepts.length
+        }
+      };
+    } catch (err: any) {
+      console.error("handleRestoreAllData error:", err);
+      return {
+        success: false,
+        message: `रीस्टोर प्रक्रिया में त्रुटि: ${err?.message || 'अज्ञात त्रुटि'}`
+      };
+    }
+  };
+
   return (
     <SecurityDeviceGuard>
       <div className="w-full min-h-screen bg-slate-100 antialiased">
@@ -625,6 +775,7 @@ export function App() {
             onUpdateDepartment={handleUpdateDepartment}
             onAddDepartment={handleAddDepartment}
             onDeleteDepartment={handleDeleteDepartment}
+            onRestoreAllData={handleRestoreAllData}
             onRefreshData={fetchLiveDbData}
           />
         )}
