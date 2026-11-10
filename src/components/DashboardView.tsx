@@ -16,7 +16,6 @@ import { DepartmentModal } from './DepartmentModal';
 import { StatusModal } from './StatusModal';
 import { cleanPhoneForWhatsApp } from '../lib/whatsapp';
 import type { StatusModalConfig, WhatsAppAction } from './StatusModal';
-import { TabGuideBanner } from './TabGuideBanner';
 import { AdminFooter } from './AdminFooter';
 import { HelpSupportView } from './HelpSupportView';
 import { generateNextTicketNumber, formatDeadlineIST } from '../utils/ticketGenerator';
@@ -107,6 +106,12 @@ const TAB_HEADER_METADATA: Record<string, { title: string; hindi: string; icon: 
     icon: XCircle,
     bg: 'bg-white/95 border-rose-300 text-rose-600 shadow-2xs'
   },
+  REOPENED: {
+    title: 'Reopened Complaints',
+    hindi: 'पुनः खुली शिकायतें (असंतुष्ट नागरिक)',
+    icon: RotateCcw,
+    bg: 'bg-white/95 border-purple-300 text-purple-600 shadow-2xs'
+  },
   SLA: {
     title: 'SLA Breached Complaints',
     hindi: 'समय-सीमा उल्लंघन शिकायतें',
@@ -160,8 +165,11 @@ export const DashboardView = ({
   onRefreshData
 }: DashboardViewProps) => {
 
-  const [activeTab, setActiveTab] = useState<'DASHBOARD' | 'INTAKE' | 'TICKETS' | 'CLOSED' | 'REJECTED' | 'SLA' | 'WARDS' | 'DEPARTMENTS' | 'SETTINGS' | 'SUPPORT'>('DASHBOARD');
+  const [activeTab, setActiveTab] = useState<'DASHBOARD' | 'INTAKE' | 'TICKETS' | 'CLOSED' | 'REJECTED' | 'REOPENED' | 'SLA' | 'WARDS' | 'DEPARTMENTS' | 'SETTINGS' | 'SUPPORT'>('DASHBOARD');
   
+  // Date Scope Mode: Defaults to 'TODAY' (portal shows only today's data by default, switchable to 'ALL' via View More / All History)
+  const [dateScopeMode, setDateScopeMode] = useState<'TODAY' | 'ALL'>('TODAY');
+
   // Advanced Filters State
   const [filtersOpen, setFiltersOpen] = useState(true);
   const [fromDate, setFromDate] = useState('');
@@ -171,13 +179,85 @@ export const DashboardView = ({
   const [selectedStatus, setSelectedStatus] = useState<string>('ALL');
   const [searchQuery, setSearchQuery] = useState('');
 
+  // Applied Filters State (Activated upon clicking "Apply Filters" button)
+  const [appliedFromDate, setAppliedFromDate] = useState('');
+  const [appliedToDate, setAppliedToDate] = useState('');
+  const [appliedWard, setAppliedWard] = useState<string>('ALL');
+  const [appliedDepartment, setAppliedDepartment] = useState<string>('ALL');
+  const [isFilterActive, setIsFilterActive] = useState(false);
+  const [dateError, setDateError] = useState<string | null>(null);
+
+  // Today's date in YYYY-MM-DD format for max calendar date restriction
+  const todayStr = useMemo(() => {
+    const now = new Date();
+    const y = now.getFullYear();
+    const m = String(now.getMonth() + 1).padStart(2, '0');
+    const d = String(now.getDate()).padStart(2, '0');
+    return `${y}-${m}-${d}`;
+  }, []);
+
+  const handleApplyFilters = () => {
+    setDateError(null);
+
+    // CRITERIA 1: Future Date Validation (From Date cannot be after Today)
+    if (fromDate && fromDate > todayStr) {
+      setDateError("⛔ Invalid Date: 'From Date' cannot be in the future. Please select today or an earlier date.");
+      return;
+    }
+
+    // CRITERIA 2: Future Date Validation (To Date cannot be after Today)
+    if (toDate && toDate > todayStr) {
+      setDateError("⛔ Invalid Date: 'To Date' cannot be in the future. Please select today or an earlier date.");
+      return;
+    }
+
+    // CRITERIA 3: Chronological Order (From Date cannot be later than To Date)
+    if (fromDate && toDate && fromDate > toDate) {
+      setDateError("⛔ Invalid Date Range: 'From Date' cannot be later than 'To Date'. Please select dates in chronological order.");
+      return;
+    }
+
+    // CRITERIA 4: Reasonable Historical Year (Cannot be before year 2020)
+    if (fromDate && fromDate < '2020-01-01') {
+      setDateError("⛔ Invalid Year: 'From Date' is too far in the past. Please select year 2020 or later.");
+      return;
+    }
+    if (toDate && toDate < '2020-01-01') {
+      setDateError("⛔ Invalid Year: 'To Date' is too far in the past. Please select year 2020 or later.");
+      return;
+    }
+
+    setAppliedFromDate(fromDate);
+    setAppliedToDate(toDate);
+    setAppliedWard(selectedWard);
+    setAppliedDepartment(selectedDepartment);
+    const hasFilter = Boolean(fromDate || toDate || selectedWard !== 'ALL' || selectedDepartment !== 'ALL');
+    setIsFilterActive(hasFilter);
+    setCurrentPage(1);
+  };
+
+  const handleClearFilters = () => {
+    setFromDate('');
+    setToDate('');
+    setSelectedWard('ALL');
+    setSelectedDepartment('ALL');
+    setAppliedFromDate('');
+    setAppliedToDate('');
+    setAppliedWard('ALL');
+    setAppliedDepartment('ALL');
+    setIsFilterActive(false);
+    setDateError(null);
+    setDateScopeMode('TODAY');
+    setCurrentPage(1);
+  };
+
   // Pagination state for scalable handling of hundreds of complaints
   const [currentPage, setCurrentPage] = useState<number>(1);
   const [pageSize, setPageSize] = useState<number>(10);
 
   useEffect(() => {
     setCurrentPage(1);
-  }, [selectedWard, selectedDepartment, selectedStatus, searchQuery, activeTab]);
+  }, [appliedWard, appliedDepartment, appliedFromDate, appliedToDate, selectedStatus, searchQuery, activeTab]);
 
   // Global keyboard shortcut to focus compact search bar with "/" or "Ctrl+K"
   useEffect(() => {
@@ -331,12 +411,107 @@ export const DashboardView = ({
     );
   }, [departments, departmentSearch]);
 
-  // Derived filtered tickets with Advanced 2-Step Closure & Keyword Filtering
-  const filteredTickets = useMemo(() => {
+  // Helper to reliably parse any municipal registration date format
+  const parseTicketDate = (ticket: Ticket): Date | null => {
+    if (ticket.registration_time_iso) {
+      const d = new Date(ticket.registration_time_iso);
+      if (!isNaN(d.getTime())) return d;
+    }
+    const reg = ticket.registration_time || '';
+    if (!reg) return null;
+    if (reg.toLowerCase().includes('today') || reg.includes('आज')) {
+      return new Date();
+    }
+    const match = reg.match(/(\d{1,2})[\/\-](\d{1,2})(?:[\/\-](\d{2,4}))?/);
+    if (match) {
+      const day = parseInt(match[1], 10);
+      const month = parseInt(match[2], 10) - 1;
+      let year = new Date().getFullYear();
+      if (match[3]) {
+        year = match[3].length === 2 ? 2000 + parseInt(match[3], 10) : parseInt(match[3], 10);
+      }
+      return new Date(year, month, day);
+    }
+    const fallback = new Date(reg);
+    if (!isNaN(fallback.getTime())) return fallback;
+    return null;
+  };
+
+  // Helper to check if a ticket was registered today
+  const isTodayRegistration = (t: Ticket) => {
+    if (t.registration_time_iso) {
+      const d = new Date(t.registration_time_iso);
+      if (!isNaN(d.getTime())) {
+        const now = new Date();
+        return (
+          d.getFullYear() === now.getFullYear() &&
+          d.getMonth() === now.getMonth() &&
+          d.getDate() === now.getDate()
+        );
+      }
+    }
+    const str = t.registration_time || '';
+    if (str.toLowerCase().includes('today') || str.includes('आज')) return true;
+    const d = new Date(str);
+    if (!isNaN(d.getTime())) {
+      const now = new Date();
+      return (
+        d.getFullYear() === now.getFullYear() &&
+        d.getMonth() === now.getMonth() &&
+        d.getDate() === now.getDate()
+      );
+    }
+    const now = new Date();
+    const day = String(now.getDate()).padStart(2, '0');
+    const month = String(now.getMonth() + 1).padStart(2, '0');
+    return str.includes(`${day}/${month}`);
+  };
+
+  // Applied Filter Scope (Tickets matching the active Date Range, Ward, and Department)
+  // When dateScopeMode is 'TODAY' and no custom date range is active, only today's data is displayed.
+  // This scoped dataset drives the 6 KPI cards, the status filter pills, and the main table.
+  const scopeTickets = useMemo(() => {
     return tickets.filter((ticket) => {
+      // 1. Date Scope: Default to TODAY if dateScopeMode === 'TODAY' and no custom date filter is set
+      if (!appliedFromDate && !appliedToDate) {
+        if (dateScopeMode === 'TODAY' && !isTodayRegistration(ticket)) {
+          return false;
+        }
+      } else {
+        // Custom Applied Date Range Filtering (Inclusive: Start 00:00:00 to End 23:59:59)
+        const ticketDate = parseTicketDate(ticket);
+        if (!ticketDate) return false;
+
+        if (appliedFromDate) {
+          const [fYear, fMonth, fDay] = appliedFromDate.split('-').map(Number);
+          const start = new Date(fYear, fMonth - 1, fDay, 0, 0, 0, 0);
+          if (ticketDate < start) return false;
+        }
+
+        if (appliedToDate) {
+          const [tYear, tMonth, tDay] = appliedToDate.split('-').map(Number);
+          const end = new Date(tYear, tMonth - 1, tDay, 23, 59, 59, 999);
+          if (ticketDate > end) return false;
+        }
+      }
+
+      // 2. Applied Ward Filter
+      if (appliedWard !== 'ALL' && ticket.ward_number.toString() !== appliedWard) return false;
+
+      // 3. Applied Department Filter
+      if (appliedDepartment !== 'ALL' && ticket.department_name !== appliedDepartment) return false;
+
+      return true;
+    });
+  }, [tickets, dateScopeMode, appliedWard, appliedDepartment, appliedFromDate, appliedToDate]);
+
+  // Derived filtered tickets with Advanced 2-Step Closure & Keyword Filtering within the active scope
+  const filteredTickets = useMemo(() => {
+    return scopeTickets.filter((ticket) => {
+      // Exclude REJECTED tickets from regular complaints register (they belong strictly in the Rejected Complaints audit tab)
+      if (ticket.status === 'REJECTED') return false;
       if (activeTab === 'CLOSED' && ticket.status !== 'CLOSED') return false;
-      if (selectedWard !== 'ALL' && ticket.ward_number.toString() !== selectedWard) return false;
-      if (selectedDepartment !== 'ALL' && ticket.department_name !== selectedDepartment) return false;
+      if (activeTab === 'REOPENED' && ticket.status !== 'REOPENED' && !ticket.is_reopened && (ticket.reopen_count ?? 0) <= 0) return false;
 
       // Advanced 2-Step Closure Status Filtering
       if (selectedStatus !== 'ALL') {
@@ -384,15 +559,35 @@ export const DashboardView = ({
       }
       return true;
     });
-  }, [tickets, activeTab, selectedWard, selectedDepartment, selectedStatus, searchQuery]);
+  }, [scopeTickets, activeTab, selectedStatus, searchQuery]);
 
-  // Derived active tickets based on SLA / All / Closed
+  // Derived active tickets based on SLA / All / Closed / Reopened
   const activeTicketsList = useMemo(() => {
     if (activeTab === 'SLA') {
       return filteredTickets.filter(t => t.is_overdue || t.is_escalated);
     }
+    if (activeTab === 'REOPENED') {
+      return filteredTickets.filter(t => t.status === 'REOPENED' || Boolean(t.is_reopened) || (t.reopen_count ?? 0) > 0);
+    }
     return filteredTickets;
   }, [activeTab, filteredTickets]);
+
+  // Reopened tickets within current scope & overall count
+  const reopenedTickets = useMemo(() => {
+    return scopeTickets.filter(t => t.status === 'REOPENED' || Boolean(t.is_reopened) || (t.reopen_count ?? 0) > 0);
+  }, [scopeTickets]);
+
+  const totalReopenedCount = useMemo(() => {
+    return tickets.filter(t => t.status === 'REOPENED' || Boolean(t.is_reopened) || (t.reopen_count ?? 0) > 0).length;
+  }, [tickets]);
+
+  const todayTicketsCount = useMemo(() => {
+    return tickets.filter(t => isTodayRegistration(t) && t.status !== 'REJECTED').length;
+  }, [tickets]);
+
+  const activeTicketsCount = useMemo(() => {
+    return tickets.filter(t => t.status !== 'REJECTED').length;
+  }, [tickets]);
 
   // Pagination calculation
   const [isPrinting, setIsPrinting] = useState(false);
@@ -543,42 +738,14 @@ export const DashboardView = ({
 
   // Real-time KPI Counts (from Master Prompt Section 9)
   const kpis = useMemo(() => {
-    const isTodayRegistration = (t: Ticket) => {
-      if (t.registration_time_iso) {
-        const d = new Date(t.registration_time_iso);
-        if (!isNaN(d.getTime())) {
-          const now = new Date();
-          return (
-            d.getFullYear() === now.getFullYear() &&
-            d.getMonth() === now.getMonth() &&
-            d.getDate() === now.getDate()
-          );
-        }
-      }
-      const str = t.registration_time || '';
-      if (str.includes('Today')) return true;
-      const d = new Date(str);
-      if (!isNaN(d.getTime())) {
-        const now = new Date();
-        return (
-          d.getFullYear() === now.getFullYear() &&
-          d.getMonth() === now.getMonth() &&
-          d.getDate() === now.getDate()
-        );
-      }
-      const now = new Date();
-      const day = String(now.getDate()).padStart(2, '0');
-      const month = String(now.getMonth() + 1).padStart(2, '0');
-      return str.includes(`${day}/${month}`);
-    };
-
-    const todayRegistered = tickets.filter(isTodayRegistration).length;
-    const totalComplaints = tickets.length;
-    const pendingComplaints = tickets.filter(t => t.status === 'REGISTERED' || t.status === 'IN_PROGRESS' || t.status === 'RESOLVED_AWAITING_CITIZEN').length;
-    const confirmedResolvedClosed = tickets.filter(t => t.status === 'CLOSED').length;
-    const overdueComplaints = tickets.filter(t => t.is_overdue && t.status !== 'CLOSED').length;
-    const escalatedComplaints = tickets.filter(t => t.is_escalated && t.status !== 'CLOSED').length;
+    const todayRegistered = todayTicketsCount;
+    const totalComplaints = scopeTickets.filter(t => t.status !== 'REJECTED').length;
+    const pendingComplaints = scopeTickets.filter(t => (t.status === 'REGISTERED' || t.status === 'IN_PROGRESS' || t.status === 'RESOLVED_AWAITING_CITIZEN') && t.status !== 'REJECTED').length;
+    const confirmedResolvedClosed = scopeTickets.filter(t => t.status === 'CLOSED').length;
+    const overdueComplaints = scopeTickets.filter(t => t.is_overdue && t.status !== 'CLOSED' && t.status !== 'REJECTED').length;
+    const escalatedComplaints = scopeTickets.filter(t => t.is_escalated && t.status !== 'CLOSED' && t.status !== 'REJECTED').length;
     const pendingIntakes = intakes.filter(i => i.status === 'PENDING_REVIEW').length;
+    const reopenedCount = reopenedTickets.length;
 
     return {
       todayRegistered,
@@ -587,9 +754,10 @@ export const DashboardView = ({
       confirmedResolvedClosed,
       overdueComplaints,
       escalatedComplaints,
-      pendingIntakes
+      pendingIntakes,
+      reopenedCount
     };
-  }, [tickets, intakes]);
+  }, [scopeTickets, intakes, todayTicketsCount, reopenedTickets]);
 
   // Utility for Universal UTF-8 CSV Export (Microsoft Excel / Google Sheets compatible with Hindi BOM)
   const downloadCsv = (filename: string, headers: string[], rows: (string | number)[][]) => {
@@ -614,7 +782,12 @@ export const DashboardView = ({
   const handleExportTicketsCsv = () => {
     const dateStr = new Date().toISOString().split('T')[0];
     const isClosedOnly = activeTab === 'CLOSED';
-    const dataList = isClosedOnly ? tickets.filter(t => t.status === 'CLOSED') : filteredTickets;
+    const isReopenedOnly = activeTab === 'REOPENED';
+    const dataList = isClosedOnly 
+      ? scopeTickets.filter(t => t.status === 'CLOSED') 
+      : isReopenedOnly
+      ? scopeTickets.filter(t => t.status === 'REOPENED' || Boolean(t.is_reopened) || (t.reopen_count ?? 0) > 0)
+      : filteredTickets;
 
     const headers = [
       'Ticket Number (टिकट सं.)',
@@ -634,6 +807,7 @@ export const DashboardView = ({
       'Step 1 Officer Notes (अधिकारी टिप्पणी)',
       'Step 2 Citizen Satisfied (नागरिक संतुष्टि)',
       'Step 2 Citizen Feedback (नागरिक फीडबैक)',
+      'Reopen Count (पुनः खुला सं.)',
       'Final Status (अंतिम स्थिति)'
     ];
 
@@ -655,11 +829,18 @@ export const DashboardView = ({
       t.authority_notes || '',
       t.citizen_satisfied !== undefined ? (t.citizen_satisfied ? 'YES (Satisfied)' : 'NO (Unsatisfied)') : 'PENDING',
       t.citizen_feedback || '',
+      t.reopen_count || 0,
       t.status
     ]);
 
+    const filename = isClosedOnly
+      ? `SNP_Chittorgarh_Completed_Complaints_${dateStr}.csv`
+      : isReopenedOnly
+      ? `SNP_Chittorgarh_Reopened_Complaints_${dateStr}.csv`
+      : `SNP_Chittorgarh_Complaints_Report_${dateStr}.csv`;
+
     downloadCsv(
-      `SNP_Chittorgarh_Complaints_Report_${dateStr}.csv`,
+      filename,
       headers,
       rows
     );
@@ -1233,7 +1414,7 @@ export const DashboardView = ({
                     <span>All Complaints</span>
                   </div>
                   <span className="text-[10px] text-slate-400 font-mono">
-                    {tickets.length}
+                    {activeTicketsCount}
                   </span>
                 </button>
 
@@ -1281,6 +1462,32 @@ export const DashboardView = ({
                     <span className="px-1.5 py-0.5 rounded-full bg-rose-500/20 text-rose-300 font-mono text-[9px] font-bold">
                       {allRejectedComplaints.length}
                     </span>
+                  )}
+                </button>
+
+                {/* 4. Reopened Complaints */}
+                <button
+                  type="button"
+                  onClick={() => {
+                    setActiveTab('REOPENED');
+                    setMobileMenuOpen(false);
+                  }}
+                  className={`w-full flex items-center justify-between px-2.5 py-2 rounded-lg text-xs font-semibold transition-all ${
+                    activeTab === 'REOPENED'
+                      ? 'bg-purple-600 text-white shadow-md'
+                      : 'text-slate-400 hover:text-white hover:bg-slate-800'
+                  }`}
+                >
+                  <div className="flex items-center gap-2.5">
+                    <RotateCcw className="w-3.5 h-3.5 shrink-0 text-purple-400" />
+                    <span>Reopened Complaints</span>
+                  </div>
+                  {totalReopenedCount > 0 ? (
+                    <span className="px-1.5 py-0.5 rounded-full bg-purple-500/20 text-purple-300 font-mono text-[9px] font-bold">
+                      {totalReopenedCount}
+                    </span>
+                  ) : (
+                    <span className="text-[10px] text-slate-500 font-mono">0</span>
                   )}
                 </button>
 
@@ -1559,6 +1766,8 @@ export const DashboardView = ({
                   ? 'वार्ड पार्षद सूची (All 60 Wards Council Directory)'
                   : activeTab === 'CLOSED'
                   ? 'प्रमाणित पूर्ण शिकायतें (Two-Step Certified Completed Complaints)'
+                  : activeTab === 'REOPENED'
+                  ? 'पुनः खुली शिकायतें (Reopened Complaints Register)'
                   : activeTab === 'SLA'
                   ? 'SLA समय-सीमा उल्लंघन रजिस्टर (SLA Breached Complaints Register)'
                   : activeTab === 'REJECTED'
@@ -1571,6 +1780,8 @@ export const DashboardView = ({
                   ? `${filteredWards.length} वार्ड पार्षद`
                   : activeTab === 'REJECTED'
                   ? `${allRejectedComplaints.length} अस्वीकृत शिकायतें`
+                  : activeTab === 'REOPENED'
+                  ? `${reopenedTickets.length} पुनः खुली शिकायतें`
                   : `${activeTab === 'CLOSED' ? tickets.filter(t => t.status === 'CLOSED').length : filteredTickets.length} शिकायतें`}
               </span>
               <span>
@@ -1581,26 +1792,76 @@ export const DashboardView = ({
             </div>
           </div>
 
-          {(activeTab === 'DASHBOARD' || activeTab === 'TICKETS' || activeTab === 'CLOSED' || activeTab === 'SLA') && (
+          {(activeTab === 'DASHBOARD' || activeTab === 'TICKETS' || activeTab === 'CLOSED' || activeTab === 'REOPENED' || activeTab === 'SLA') && (
             <>
-              {/* Greeting & Subtitle (Matches Reference Screenshot 2) */}
+              {/* Greeting & Scope Switcher (Today Only vs View More / All History) */}
               <div className="flex flex-wrap items-center justify-between gap-4 print:hidden">
                 <div>
                   <h1 className="text-2xl font-bold text-slate-900 flex items-center gap-2">
                     Good morning, {userRole.replace('_', ' ')} 👋
                   </h1>
                   <p className="text-xs text-slate-500 mt-1">
-                    Here's what's happening across Nagar Parishad Chittorgarh today.
+                    {dateScopeMode === 'TODAY' && !isFilterActive
+                      ? "Showing Today's Complaints only (आज की शिकायतें). Click 'View More / All History' to see all previous records."
+                      : "Showing complaints based on active filter scope."}
                   </p>
                 </div>
 
-            <div className="flex items-center gap-2">
-              <span className="inline-flex items-center gap-1.5 px-3 py-1 rounded-full bg-emerald-50 border border-emerald-200 text-emerald-700 text-xs font-semibold">
-                <span className="w-2 h-2 rounded-full bg-emerald-500 animate-pulse" />
-                Live Sync: Chittorgarh Central DB Connected
-              </span>
-            </div>
-          </div>
+                <div className="flex items-center gap-2.5 flex-wrap">
+                  {/* Today vs All Records Scope Switcher */}
+                  <div className="inline-flex items-center p-1 rounded-xl bg-slate-100 border border-slate-200 shadow-2xs">
+                    <button
+                      type="button"
+                      onClick={() => {
+                        setDateScopeMode('TODAY');
+                        if (appliedFromDate || appliedToDate) {
+                          handleClearFilters();
+                        }
+                      }}
+                      className={`px-3 py-1.5 rounded-lg text-xs font-bold transition-all flex items-center gap-1.5 cursor-pointer ${
+                        dateScopeMode === 'TODAY' && !isFilterActive
+                          ? 'bg-blue-600 text-white shadow-xs'
+                          : 'text-slate-600 hover:text-slate-900'
+                      }`}
+                      title="Show only today's registrations"
+                    >
+                      <Calendar className="w-3.5 h-3.5" />
+                      <span>Today Only (आज)</span>
+                      <span className={`px-1.5 py-0.2 rounded-full text-[10px] font-mono ${
+                        dateScopeMode === 'TODAY' && !isFilterActive ? 'bg-white/20 text-white' : 'bg-slate-200 text-slate-700'
+                      }`}>
+                        {todayTicketsCount}
+                      </span>
+                    </button>
+
+                    <button
+                      type="button"
+                      onClick={() => {
+                        setDateScopeMode('ALL');
+                      }}
+                      className={`px-3 py-1.5 rounded-lg text-xs font-bold transition-all flex items-center gap-1.5 cursor-pointer ${
+                        dateScopeMode === 'ALL' || isFilterActive
+                          ? 'bg-blue-600 text-white shadow-xs'
+                          : 'text-slate-600 hover:text-slate-900'
+                      }`}
+                      title="Show all complaints history"
+                    >
+                      <Layers className="w-3.5 h-3.5" />
+                      <span>View More / All History (सभी पुरानी)</span>
+                      <span className={`px-1.5 py-0.2 rounded-full text-[10px] font-mono ${
+                        dateScopeMode === 'ALL' || isFilterActive ? 'bg-white/20 text-white' : 'bg-slate-200 text-slate-700'
+                      }`}>
+                        {activeTicketsCount}
+                      </span>
+                    </button>
+                  </div>
+
+                  <span className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-full bg-emerald-50 border border-emerald-200 text-emerald-700 text-xs font-semibold">
+                    <span className="w-2 h-2 rounded-full bg-emerald-500 animate-pulse" />
+                    Live Sync: Central DB Connected
+                  </span>
+                </div>
+              </div>
 
           {/* ADVANCED FILTERS CARD (Matches Reference Screenshot 2) */}
           <div className="bg-white rounded-2xl border border-slate-200 shadow-2xs overflow-hidden print:hidden">
@@ -1620,6 +1881,24 @@ export const DashboardView = ({
 
             {filtersOpen && (
               <div className="p-5 space-y-4">
+                {/* Date Validation Error Alert */}
+                {dateError && (
+                  <div className="p-3.5 rounded-xl bg-rose-50 border border-rose-300 text-rose-900 text-xs font-semibold flex items-center justify-between gap-2 shadow-2xs animate-in fade-in duration-150">
+                    <div className="flex items-center gap-2">
+                      <AlertTriangle className="w-4 h-4 text-rose-600 shrink-0" />
+                      <span>{dateError}</span>
+                    </div>
+                    <button
+                      type="button"
+                      onClick={() => setDateError(null)}
+                      className="text-rose-500 hover:text-rose-800 text-xs font-bold px-1.5 py-0.5 rounded cursor-pointer"
+                      title="Dismiss error"
+                    >
+                      ✕
+                    </button>
+                  </div>
+                )}
+
                 <div className="grid grid-cols-1 md:grid-cols-4 gap-4">
                   {/* From Date */}
                   <div className="space-y-1">
@@ -1627,8 +1906,15 @@ export const DashboardView = ({
                     <input
                       type="date"
                       value={fromDate}
-                      onChange={(e) => setFromDate(e.target.value)}
-                      className="w-full px-3 py-2 rounded-lg border border-slate-200 text-xs text-slate-700 bg-white"
+                      max={todayStr}
+                      min="2020-01-01"
+                      onChange={(e) => {
+                        setFromDate(e.target.value);
+                        setDateError(null);
+                      }}
+                      className={`w-full px-3 py-2 rounded-lg border text-xs text-slate-700 bg-white transition-all ${
+                        dateError && fromDate > todayStr ? 'border-rose-400 ring-2 ring-rose-200' : 'border-slate-200'
+                      }`}
                     />
                   </div>
 
@@ -1638,8 +1924,15 @@ export const DashboardView = ({
                     <input
                       type="date"
                       value={toDate}
-                      onChange={(e) => setToDate(e.target.value)}
-                      className="w-full px-3 py-2 rounded-lg border border-slate-200 text-xs text-slate-700 bg-white"
+                      max={todayStr}
+                      min={fromDate || "2020-01-01"}
+                      onChange={(e) => {
+                        setToDate(e.target.value);
+                        setDateError(null);
+                      }}
+                      className={`w-full px-3 py-2 rounded-lg border text-xs text-slate-700 bg-white transition-all ${
+                        dateError && toDate > todayStr ? 'border-rose-400 ring-2 ring-rose-200' : 'border-slate-200'
+                      }`}
                     />
                   </div>
 
@@ -1681,13 +1974,72 @@ export const DashboardView = ({
                   </div>
                 </div>
 
-                {/* Helpful Note Bar (Matches Screenshot 2) */}
-                <div className="p-3 rounded-xl bg-blue-50/70 border border-blue-200/60 text-xs text-blue-900 flex items-center gap-2">
-                  <span>💡</span>
-                  <span>
-                    To view complaints for a <strong>single specific date</strong>, simply select that same date in both the "From Date" and "To Date" fields.
-                  </span>
+                {/* Filter Action Buttons (Apply & Clear) */}
+                <div className="flex flex-wrap items-center justify-between gap-3 pt-2 border-t border-slate-100">
+                  <div className="flex items-center gap-2">
+                    <button
+                      type="button"
+                      onClick={handleApplyFilters}
+                      className="px-5 py-2.5 rounded-xl bg-blue-600 hover:bg-blue-700 text-white font-bold text-xs flex items-center gap-2 shadow-sm transition-all cursor-pointer"
+                    >
+                      <Filter className="w-3.5 h-3.5" />
+                      Apply Filters
+                    </button>
+                    {(fromDate || toDate || selectedWard !== 'ALL' || selectedDepartment !== 'ALL' || isFilterActive) && (
+                      <button
+                        type="button"
+                        onClick={handleClearFilters}
+                        className="px-4 py-2.5 rounded-xl border border-slate-300 bg-white hover:bg-slate-100 text-slate-700 font-bold text-xs flex items-center gap-1.5 transition-all cursor-pointer"
+                      >
+                        <RotateCcw className="w-3.5 h-3.5 text-slate-500" />
+                        Reset Filters
+                      </button>
+                    )}
+                  </div>
+
+                  {/* Helpful Note */}
+                  <div className="text-[11px] text-slate-500 flex items-center gap-1.5">
+                    <span>💡</span>
+                    <span>To view complaints for a <strong>single specific date</strong>, select the same date in both From &amp; To Date.</span>
+                  </div>
                 </div>
+
+                {/* Active Filter Status Bar */}
+                {isFilterActive && (
+                  <div className="p-3 rounded-xl bg-blue-50/80 border border-blue-200 text-xs text-blue-900 flex flex-wrap items-center justify-between gap-2 shadow-2xs">
+                    <div className="flex items-center gap-2 flex-wrap">
+                      <span className="w-2 h-2 rounded-full bg-blue-600 animate-pulse shrink-0" />
+                      <span className="font-bold">Active Filter:</span>
+                      {appliedFromDate && appliedToDate ? (
+                        appliedFromDate === appliedToDate ? (
+                          <span className="bg-white px-2 py-0.5 rounded border border-blue-200 font-mono font-bold">Date: {appliedFromDate}</span>
+                        ) : (
+                          <span className="bg-white px-2 py-0.5 rounded border border-blue-200 font-mono font-bold">{appliedFromDate} to {appliedToDate}</span>
+                        )
+                      ) : appliedFromDate ? (
+                        <span className="bg-white px-2 py-0.5 rounded border border-blue-200 font-mono font-bold">From {appliedFromDate} onwards</span>
+                      ) : appliedToDate ? (
+                        <span className="bg-white px-2 py-0.5 rounded border border-blue-200 font-mono font-bold">Up to {appliedToDate}</span>
+                      ) : null}
+                      {appliedWard !== 'ALL' && (
+                        <span className="bg-white px-2 py-0.5 rounded border border-blue-200 font-bold">Ward {appliedWard}</span>
+                      )}
+                      {appliedDepartment !== 'ALL' && (
+                        <span className="bg-white px-2 py-0.5 rounded border border-blue-200 font-bold">{appliedDepartment}</span>
+                      )}
+                      <span className="bg-blue-600 text-white px-2 py-0.5 rounded-full font-bold text-[10px]">
+                        {filteredTickets.length} complaints found
+                      </span>
+                    </div>
+                    <button
+                      type="button"
+                      onClick={handleClearFilters}
+                      className="text-xs font-bold text-blue-700 hover:text-blue-900 underline cursor-pointer shrink-0"
+                    >
+                      Clear Filter ✕
+                    </button>
+                  </div>
+                )}
               </div>
             )}
           </div>
@@ -1827,24 +2179,43 @@ export const DashboardView = ({
 
           {/* ACTIVE TAB CONTENT DISPLAY */}
 
-          {/* TAB: DASHBOARD / ALL TICKETS / CLOSED / SLA */}
-          {(activeTab === 'DASHBOARD' || activeTab === 'TICKETS' || activeTab === 'CLOSED' || activeTab === 'SLA') && (
+          {/* TAB: DASHBOARD / ALL TICKETS / CLOSED / REOPENED / SLA */}
+          {(activeTab === 'DASHBOARD' || activeTab === 'TICKETS' || activeTab === 'CLOSED' || activeTab === 'REOPENED' || activeTab === 'SLA') && (
             <div className="space-y-4">
               <div className="bg-white rounded-2xl border border-slate-200 shadow-2xs overflow-hidden print:border-none print:shadow-none print:rounded-none">
               <div className="px-6 py-4 border-b border-slate-200 flex flex-wrap items-center justify-between gap-4 print:hidden">
                 <div>
-                  <h3 className="text-sm font-bold text-slate-900">
-                    {activeTab === 'SLA' 
-                      ? 'SLA Breached Complaints Register (समय-सीमा उल्लंघन)' 
-                      : activeTab === 'CLOSED'
-                      ? 'Completed Complaints (प्रमाणित पूर्ण शिकायतें)'
-                      : 'Complaints & Official Tickets Management'}
-                  </h3>
-                  <p className="text-xs text-slate-500">
+                  <div className="flex items-center gap-2">
+                    <h3 className="text-sm font-bold text-slate-900">
+                      {activeTab === 'SLA' 
+                        ? 'SLA Breached Complaints Register (समय-सीमा उल्लंघन)' 
+                        : activeTab === 'CLOSED'
+                        ? 'Completed Complaints (प्रमाणित पूर्ण शिकायतें)'
+                        : activeTab === 'REOPENED'
+                        ? 'Reopened Complaints Register (पुनः खुली शिकायतें)'
+                        : 'Complaints & Official Tickets Management'}
+                    </h3>
+
+                    {/* Scope indicator badge next to title */}
+                    {!isFilterActive && (
+                      dateScopeMode === 'TODAY' ? (
+                        <span className="px-2 py-0.5 rounded-md bg-blue-100 text-blue-800 text-[10px] font-bold border border-blue-200">
+                          Today Only (आज)
+                        </span>
+                      ) : (
+                        <span className="px-2 py-0.5 rounded-md bg-slate-100 text-slate-700 text-[10px] font-bold border border-slate-300">
+                          All History (सभी)
+                        </span>
+                      )
+                    )}
+                  </div>
+                  <p className="text-xs text-slate-500 mt-0.5">
                     {activeTab === 'SLA'
                       ? `Showing ${activeTicketsList.length} complaints exceeding standard resolution SLA deadlines`
                       : activeTab === 'CLOSED'
                       ? `Showing ${activeTicketsList.length} two-step certified completed complaints`
+                      : activeTab === 'REOPENED'
+                      ? `Showing ${activeTicketsList.length} grievances reopened after citizen dissatisfaction or pending re-verification`
                       : `Showing ${activeTicketsList.length} complaints across Chittorgarh Nagar Parishad`}
                   </p>
                 </div>
@@ -1855,50 +2226,50 @@ export const DashboardView = ({
                     <button
                       type="button"
                       onClick={() => {
-                        if (activeTab === 'CLOSED') setActiveTab('TICKETS');
+                        if (activeTab === 'CLOSED' || activeTab === 'REOPENED') setActiveTab('TICKETS');
                         setSelectedStatus('ALL');
                       }}
                       className={`px-3 py-1.5 rounded-lg text-xs font-bold transition-all cursor-pointer ${
-                        activeTab !== 'CLOSED' && selectedStatus === 'ALL'
+                        activeTab !== 'CLOSED' && activeTab !== 'REOPENED' && selectedStatus === 'ALL'
                           ? 'bg-white text-slate-900 shadow-xs ring-1 ring-slate-200'
                           : 'text-slate-600 hover:text-slate-900'
                       }`}
                     >
-                      All ({tickets.length})
+                      All ({scopeTickets.filter(t => t.status !== 'REJECTED').length})
                     </button>
 
                     {/* Step 1: Officer Verification Baaki */}
                     <button
                       type="button"
                       onClick={() => {
-                        if (activeTab === 'CLOSED') setActiveTab('TICKETS');
+                        if (activeTab === 'CLOSED' || activeTab === 'REOPENED') setActiveTab('TICKETS');
                         setSelectedStatus('OFFICER_PENDING');
                       }}
                       className={`px-3 py-1.5 rounded-lg text-xs font-bold transition-all flex items-center gap-1.5 cursor-pointer ${
-                        activeTab !== 'CLOSED' && selectedStatus === 'OFFICER_PENDING'
+                        activeTab !== 'CLOSED' && activeTab !== 'REOPENED' && selectedStatus === 'OFFICER_PENDING'
                           ? 'bg-blue-600 text-white shadow-xs'
                           : 'text-blue-700 hover:bg-blue-50'
                       }`}
                     >
                       <ShieldCheck className="w-3.5 h-3.5" />
-                      <span>Step 1: Officer Pending ({tickets.filter(t => !t.authority_confirmed && t.status !== 'CLOSED').length})</span>
+                      <span>Step 1: Officer Pending ({scopeTickets.filter(t => !t.authority_confirmed && t.status !== 'CLOSED' && t.status !== 'REJECTED').length})</span>
                     </button>
 
                     {/* Step 2: Citizen Confirmation Baaki */}
                     <button
                       type="button"
                       onClick={() => {
-                        if (activeTab === 'CLOSED') setActiveTab('TICKETS');
+                        if (activeTab === 'CLOSED' || activeTab === 'REOPENED') setActiveTab('TICKETS');
                         setSelectedStatus('CITIZEN_PENDING');
                       }}
                       className={`px-3 py-1.5 rounded-lg text-xs font-bold transition-all flex items-center gap-1.5 cursor-pointer ${
-                        activeTab !== 'CLOSED' && selectedStatus === 'CITIZEN_PENDING'
+                        activeTab !== 'CLOSED' && activeTab !== 'REOPENED' && selectedStatus === 'CITIZEN_PENDING'
                           ? 'bg-amber-500 text-white shadow-xs'
                           : 'text-amber-800 hover:bg-amber-50'
                       }`}
                     >
                       <Phone className="w-3.5 h-3.5" />
-                      <span>Step 2: Citizen Call Pending ({tickets.filter(t => t.authority_confirmed && t.status !== 'CLOSED').length})</span>
+                      <span>Step 2: Citizen Call Pending ({scopeTickets.filter(t => t.authority_confirmed && t.status !== 'CLOSED' && t.status !== 'REJECTED').length})</span>
                     </button>
 
                     {/* Both Complete: Closed */}
@@ -1915,7 +2286,7 @@ export const DashboardView = ({
                       }`}
                     >
                       <CheckCircle2 className="w-3.5 h-3.5" />
-                      <span>2-Step Complete ({tickets.filter(t => t.status === 'CLOSED').length})</span>
+                      <span>2-Step Complete ({scopeTickets.filter(t => t.status === 'CLOSED').length})</span>
                     </button>
                   </div>
 
@@ -1960,8 +2331,27 @@ export const DashboardView = ({
                   <tbody className="divide-y divide-slate-400 bg-white">
                     {paginatedTickets.length === 0 ? (
                       <tr>
-                        <td colSpan={7} className="px-6 py-12 text-center text-slate-400">
-                          No matching complaints found for the current filter criteria.
+                        <td colSpan={7} className="px-6 py-12 text-center text-slate-500">
+                          <div className="max-w-md mx-auto space-y-3">
+                            <Filter className="w-8 h-8 mx-auto text-slate-300" />
+                            <p className="font-bold text-sm text-slate-700">
+                              {isFilterActive
+                                ? 'No matching complaints found for the selected filter criteria (Date / Ward / Department).'
+                                : activeTab === 'REOPENED'
+                                ? 'No reopened complaints currently. All resolved complaints have satisfied citizens! 👏'
+                                : 'No matching complaints found for the current filter criteria.'}
+                            </p>
+                            {isFilterActive && (
+                              <button
+                                type="button"
+                                onClick={handleClearFilters}
+                                className="px-4 py-2 rounded-xl bg-blue-600 hover:bg-blue-700 text-white font-bold text-xs transition-all cursor-pointer shadow-xs inline-flex items-center gap-1.5"
+                              >
+                                <RotateCcw className="w-3.5 h-3.5" />
+                                Reset Filters
+                              </button>
+                            )}
+                          </div>
                         </td>
                       </tr>
                     ) : (
@@ -2053,7 +2443,22 @@ export const DashboardView = ({
 
                           {/* Status - Explicit 2-Step Closure Lifecycle Indicator */}
                           <td className="px-4 py-3.5 border-r border-slate-400 align-middle text-center whitespace-nowrap">
-                            {ticket.status !== 'CLOSED' ? (
+                            {ticket.status === 'REJECTED' ? (
+                              <span className="inline-flex items-center gap-1 px-3 py-1 rounded-full text-[10px] font-bold uppercase tracking-wider text-center whitespace-nowrap shadow-2xs border bg-rose-50 text-rose-800 border-rose-300">
+                                <XCircle className="w-3.5 h-3.5 text-rose-600" />
+                                <span>Rejected</span>
+                              </span>
+                            ) : ticket.status === 'REOPENED' || ticket.is_reopened ? (
+                              <button
+                                type="button"
+                                onClick={() => setSelectedTicketForClosure(ticket)}
+                                title="Complaint reopened by citizen! Click to inspect and resolve."
+                                className="inline-flex items-center gap-1.5 px-3 py-1 rounded-full text-[10px] font-bold uppercase tracking-wider text-center whitespace-nowrap shadow-2xs border bg-purple-100 text-purple-900 border-purple-400 ring-2 ring-purple-300/80 animate-pulse cursor-pointer hover:bg-purple-200 transition-colors"
+                              >
+                                <RotateCcw className="w-3 h-3 text-purple-700" />
+                                <span>Reopened {(ticket.reopen_count ?? 0) > 0 ? `(${ticket.reopen_count}x)` : ''}</span>
+                              </button>
+                            ) : ticket.status !== 'CLOSED' ? (
                               ticket.authority_confirmed ? (
                                 <button
                                   type="button"
@@ -2086,7 +2491,12 @@ export const DashboardView = ({
                           {/* Actions (Clean & Properly Sized with No Overlap) */}
                           <td className="px-3.5 py-3.5 align-middle text-right whitespace-nowrap bg-white border-l border-slate-300 print:hidden">
                             <div className="flex items-center justify-end gap-1.5 whitespace-nowrap">
-                              {ticket.status !== 'CLOSED' ? (
+                              {ticket.status === 'REJECTED' ? (
+                                <span className="px-2.5 py-1 rounded-lg bg-rose-50 text-rose-800 border border-rose-300 font-bold text-[11px] inline-flex items-center gap-1 whitespace-nowrap">
+                                  <XCircle className="w-3.5 h-3.5 text-rose-600" />
+                                  <span>Rejected</span>
+                                </span>
+                              ) : ticket.status !== 'CLOSED' ? (
                                 ticket.authority_confirmed ? (
                                   <button
                                     type="button"
@@ -2216,12 +2626,6 @@ export const DashboardView = ({
                 </div>
               </div>
             </div>
-
-            {/* Workflow Flowcharts & Guides (Placed at bottom, collapsed by default) */}
-            {activeTab === 'DASHBOARD' && <TabGuideBanner tabKey="DASHBOARD" />}
-            {activeTab === 'TICKETS' && <TabGuideBanner tabKey="TICKETS" />}
-            {activeTab === 'CLOSED' && <TabGuideBanner tabKey="TICKETS" />}
-            {activeTab === 'SLA' && <TabGuideBanner tabKey="SLA" />}
           </div>
           )}
 
@@ -2456,9 +2860,6 @@ export const DashboardView = ({
                 </table>
               </div>
             </div>
-
-            {/* Workflow Flowchart & Guide (Placed at bottom, collapsed by default) */}
-            <TabGuideBanner tabKey="INTAKE" />
           </div>
           )}
 
@@ -2923,9 +3324,6 @@ export const DashboardView = ({
                 </table>
               </div>
             </div>
-
-            {/* Workflow Flowchart & Guide (Placed at bottom, collapsed by default) */}
-            <TabGuideBanner tabKey="WARDS" />
           </div>
           )}
 
@@ -3049,9 +3447,6 @@ export const DashboardView = ({
                 </table>
               </div>
             </div>
-
-            {/* Workflow Flowchart & Guide (Placed at bottom, collapsed by default) */}
-            <TabGuideBanner tabKey="DEPARTMENTS" />
           </div>
           )}
 
