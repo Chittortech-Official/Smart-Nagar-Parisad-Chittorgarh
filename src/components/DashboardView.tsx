@@ -1,4 +1,4 @@
-import { useState, useMemo, useEffect, useRef } from 'react';
+import { useState, useMemo, useEffect } from 'react';
 import type { 
   UserRole, 
   Ticket, 
@@ -32,7 +32,6 @@ import {
   LogOut, 
   Search, 
   RefreshCw, 
-  Bell, 
   ChevronDown, 
   ChevronUp, 
   Plus, 
