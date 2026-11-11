@@ -174,7 +174,7 @@ export const DashboardView = ({
   const [dateScopeMode, setDateScopeMode] = useState<'TODAY' | 'ALL'>('TODAY');
 
   // Advanced Filters State
-  const [filtersOpen, setFiltersOpen] = useState(true);
+  const [filtersOpen, setFiltersOpen] = useState(false);
   const [fromDate, setFromDate] = useState('');
   const [toDate, setToDate] = useState('');
   const [selectedWard, setSelectedWard] = useState<string>('ALL');
@@ -298,8 +298,9 @@ export const DashboardView = ({
   const [parshadSearch, setParshadSearch] = useState('');
   const [departmentSearch, setDepartmentSearch] = useState('');
 
-  // Mobile sidebar drawer state
+  // Mobile sidebar drawer state & Desktop collapse state
   const [mobileMenuOpen, setMobileMenuOpen] = useState(false);
+  const [sidebarCollapsed, setSidebarCollapsed] = useState(false);
 
   // Dedicated Filter States for Rejected Complaints Tab
   const [rejectedSearch, setRejectedSearch] = useState('');
@@ -519,7 +520,10 @@ export const DashboardView = ({
 
       // Advanced 2-Step Closure Status Filtering
       if (selectedStatus !== 'ALL') {
-        if (selectedStatus === 'OFFICER_PENDING') {
+        if (selectedStatus === 'IN_PROGRESS') {
+          // All active in-progress complaints undergoing Step 1 or Step 2 (not closed)
+          if (ticket.status === 'CLOSED') return false;
+        } else if (selectedStatus === 'OFFICER_PENDING') {
           // Step 1: Officer Verification Baaki
           if (ticket.status === 'CLOSED' || ticket.authority_confirmed) return false;
         } else if (selectedStatus === 'CITIZEN_PENDING' || selectedStatus === 'RESOLVED_AWAITING_CITIZEN') {
@@ -744,7 +748,9 @@ export const DashboardView = ({
   const kpis = useMemo(() => {
     const todayRegistered = todayTicketsCount;
     const totalComplaints = scopeTickets.filter(t => t.status !== 'REJECTED').length;
-    const pendingComplaints = scopeTickets.filter(t => t.status === 'REGISTERED' || t.status === 'IN_PROGRESS' || t.status === 'RESOLVED_AWAITING_CITIZEN').length;
+    const officerPendingCount = scopeTickets.filter(t => !t.authority_confirmed && t.status !== 'CLOSED' && t.status !== 'REJECTED').length;
+    const citizenPendingCount = scopeTickets.filter(t => t.authority_confirmed && t.status !== 'CLOSED' && t.status !== 'REJECTED').length;
+    const inProgressComplaints = officerPendingCount + citizenPendingCount;
     const confirmedResolvedClosed = scopeTickets.filter(t => t.status === 'CLOSED').length;
     const overdueComplaints = scopeTickets.filter(t => t.is_overdue && t.status !== 'CLOSED' && t.status !== 'REJECTED').length;
     const escalatedComplaints = scopeTickets.filter(t => t.is_escalated && t.status !== 'CLOSED' && t.status !== 'REJECTED').length;
@@ -754,7 +760,10 @@ export const DashboardView = ({
     return {
       todayRegistered,
       totalComplaints,
-      pendingComplaints,
+      pendingComplaints: inProgressComplaints,
+      inProgressComplaints,
+      officerPendingCount,
+      citizenPendingCount,
       confirmedResolvedClosed,
       overdueComplaints,
       escalatedComplaints,
@@ -1342,19 +1351,32 @@ export const DashboardView = ({
         />
       )}
 
-      {/* 1. LEFT SIDEBAR NAVIGATION (Responsive Drawer on Mobile, Fixed Sidebar on Desktop) */}
-      <aside className={`fixed inset-y-0 left-0 z-50 w-64 bg-slate-900 border-r border-slate-800 flex flex-col justify-between shrink-0 select-none transition-transform duration-200 ease-in-out md:static md:w-56 md:translate-x-0 ${
+      {/* 1. LEFT SIDEBAR NAVIGATION (Responsive Drawer on Mobile, Collapsible Sidebar on Desktop / MacBook) */}
+      <aside className={`fixed inset-y-0 left-0 z-50 ${
+        sidebarCollapsed ? 'w-16 md:w-16' : 'w-64 md:w-52 lg:w-56'
+      } sidebar-navy-gradient border-r border-slate-800/80 flex flex-col justify-between shrink-0 select-none shadow-2xl transition-all duration-200 ease-in-out md:static ${
         mobileMenuOpen ? 'translate-x-0' : '-translate-x-full md:translate-x-0'
       } print:hidden`}>
         <div>
           {/* Sidebar Header Brand: Nagar Parishad Portal */}
-          <div className="p-3 border-b border-slate-800/80 bg-slate-950/40 flex items-center justify-between">
-            <NagarParishadLogo 
-              size="sm" 
-              theme="dark"
-              hindiTitle="नगर परिषद पोर्टल"
-              englishSubtitle="Nagar Parishad Portal"
-            />
+          <div className="p-3 sidebar-brand-glow flex items-center justify-between overflow-hidden">
+            {!sidebarCollapsed ? (
+              <NagarParishadLogo 
+                size="sm" 
+                theme="dark"
+                hindiTitle="नगर परिषद"
+                englishSubtitle="Nagar Parishad"
+              />
+            ) : (
+              <div className="mx-auto" title="Nagar Parishad Chittorgarh">
+                <NagarParishadLogo 
+                  size="sm" 
+                  theme="dark"
+                  hindiTitle=""
+                  englishSubtitle=""
+                />
+              </div>
+            )}
             <button
               type="button"
               onClick={() => setMobileMenuOpen(false)}
@@ -1364,16 +1386,21 @@ export const DashboardView = ({
               <X className="w-4 h-4" />
             </button>
           </div>
-          <div className="px-3 pt-1 text-[9px] uppercase font-mono tracking-wider text-slate-400">
-            ADMIN PORTAL &bull; CHITTORGARH
-          </div>
+          {!sidebarCollapsed && (
+            <div className="px-3 py-1 text-[8.5px] uppercase font-mono tracking-widest text-sky-300/80 bg-sky-950/40 border-b border-white/5 flex items-center gap-1.5 truncate">
+              <span className="w-1.5 h-1.5 rounded-full bg-emerald-400 animate-pulse shrink-0" />
+              <span className="truncate">ADMIN PORTAL &bull; CHITTORGARH</span>
+            </div>
+          )}
 
           {/* MAIN MENU */}
-          <div className="p-2 space-y-4">
+          <div className="p-2 space-y-3">
             <div>
-              <span className="px-2.5 text-[9px] font-bold uppercase tracking-wider text-slate-500">
-                MAIN
-              </span>
+              {!sidebarCollapsed && (
+                <span className="px-2.5 text-[10px] font-black uppercase tracking-wider text-slate-400">
+                  MAIN
+                </span>
+              )}
               <div className="mt-1 space-y-0.5">
                 <button
                   type="button"
@@ -1381,23 +1408,26 @@ export const DashboardView = ({
                     setActiveTab('DASHBOARD');
                     setMobileMenuOpen(false);
                   }}
-                  className={`w-full flex items-center gap-2.5 px-2.5 py-2 rounded-lg text-xs font-semibold transition-all ${
+                  title={sidebarCollapsed ? "Dashboard" : undefined}
+                  className={`w-full flex items-center ${sidebarCollapsed ? 'justify-center px-2 py-2.5' : 'gap-2.5 px-3 py-2'} rounded-xl text-xs font-semibold transition-all group cursor-pointer ${
                     activeTab === 'DASHBOARD'
-                      ? 'bg-blue-600 text-white shadow-md'
-                      : 'text-slate-400 hover:text-white hover:bg-slate-800'
+                      ? 'bg-linear-to-r from-blue-600 to-indigo-600 text-white shadow-lg shadow-blue-500/25 font-bold ring-1 ring-white/20'
+                      : 'text-slate-300 hover:text-white hover:bg-white/10 hover:translate-x-0.5'
                   }`}
                 >
-                  <LayoutDashboard className="w-3.5 h-3.5 shrink-0" />
-                  <span>Dashboard</span>
+                  <LayoutDashboard className={`w-3.5 h-3.5 shrink-0 transition-transform group-hover:scale-110 ${activeTab === 'DASHBOARD' ? 'text-white' : 'text-blue-400'}`} />
+                  {!sidebarCollapsed && <span>Dashboard</span>}
                 </button>
               </div>
             </div>
 
             {/* MANAGEMENT MENU */}
             <div>
-              <span className="px-2.5 text-[9px] font-bold uppercase tracking-wider text-slate-500">
-                MANAGEMENT
-              </span>
+              {!sidebarCollapsed && (
+                <span className="px-2.5 text-[10px] font-black uppercase tracking-wider text-slate-400">
+                  MANAGEMENT
+                </span>
+              )}
               <div className="mt-1 space-y-0.5">
                 {/* 1. All Complaints */}
                 <button
@@ -1407,19 +1437,28 @@ export const DashboardView = ({
                     setSelectedStatus('ALL');
                     setMobileMenuOpen(false);
                   }}
-                  className={`w-full flex items-center justify-between px-2.5 py-2 rounded-lg text-xs font-semibold transition-all ${
+                  title={sidebarCollapsed ? `All Complaints (${activeTicketsCount})` : undefined}
+                  className={`w-full flex items-center ${sidebarCollapsed ? 'justify-center px-2 py-2.5 relative' : 'justify-between px-3 py-2'} rounded-xl text-xs font-semibold transition-all group cursor-pointer ${
                     activeTab === 'TICKETS'
-                      ? 'bg-blue-600 text-white shadow-md'
-                      : 'text-slate-400 hover:text-white hover:bg-slate-800'
+                      ? 'bg-linear-to-r from-blue-600 to-indigo-600 text-white shadow-lg shadow-blue-500/25 font-bold ring-1 ring-white/20'
+                      : 'text-slate-300 hover:text-white hover:bg-white/10 hover:translate-x-0.5'
                   }`}
                 >
                   <div className="flex items-center gap-2.5">
-                    <TicketCheck className="w-3.5 h-3.5 shrink-0" />
-                    <span>All Complaints</span>
+                    <TicketCheck className={`w-3.5 h-3.5 shrink-0 transition-transform group-hover:scale-110 ${activeTab === 'TICKETS' ? 'text-white' : 'text-sky-400'}`} />
+                    {!sidebarCollapsed && <span>All Complaints</span>}
                   </div>
-                  <span className="text-[10px] text-slate-400 font-mono">
-                    {activeTicketsCount}
-                  </span>
+                  {!sidebarCollapsed ? (
+                    <span className={`px-1.5 py-0.5 rounded-full font-mono text-[9px] font-bold ${
+                      activeTab === 'TICKETS' ? 'bg-white/20 text-white' : 'bg-slate-800 text-slate-300 border border-slate-700/60'
+                    }`}>
+                      {activeTicketsCount}
+                    </span>
+                  ) : (
+                    activeTicketsCount > 0 && (
+                      <span className="absolute top-1 right-1 w-2 h-2 rounded-full bg-blue-500 ring-2 ring-slate-900" />
+                    )
+                  )}
                 </button>
 
                 {/* 2. Completed Complaints (formerly Closed) */}
@@ -1430,19 +1469,28 @@ export const DashboardView = ({
                     setSelectedStatus('CLOSED');
                     setMobileMenuOpen(false);
                   }}
-                  className={`w-full flex items-center justify-between px-2.5 py-2 rounded-lg text-xs font-semibold transition-all ${
+                  title={sidebarCollapsed ? `Completed Complaints (${kpis.confirmedResolvedClosed})` : undefined}
+                  className={`w-full flex items-center ${sidebarCollapsed ? 'justify-center px-2 py-2.5 relative' : 'justify-between px-3 py-2'} rounded-xl text-xs font-semibold transition-all group cursor-pointer ${
                     activeTab === 'CLOSED'
-                      ? 'bg-emerald-600 text-white shadow-md'
-                      : 'text-slate-400 hover:text-white hover:bg-slate-800'
+                      ? 'bg-linear-to-r from-emerald-600 to-teal-600 text-white shadow-lg shadow-emerald-500/25 font-bold ring-1 ring-white/20'
+                      : 'text-slate-300 hover:text-white hover:bg-white/10 hover:translate-x-0.5'
                   }`}
                 >
                   <div className="flex items-center gap-2.5">
-                    <CheckCircle2 className="w-3.5 h-3.5 shrink-0 text-emerald-400" />
-                    <span>Completed Complaints</span>
+                    <CheckCircle2 className={`w-3.5 h-3.5 shrink-0 transition-transform group-hover:scale-110 ${activeTab === 'CLOSED' ? 'text-white' : 'text-emerald-400'}`} />
+                    {!sidebarCollapsed && <span>Completed Complaints</span>}
                   </div>
-                  <span className="px-1.5 py-0.5 rounded-full bg-emerald-500/20 text-emerald-300 font-mono text-[9px] font-bold">
-                    {kpis.confirmedResolvedClosed}
-                  </span>
+                  {!sidebarCollapsed ? (
+                    <span className={`px-1.5 py-0.5 rounded-full font-mono text-[9px] font-bold ${
+                      activeTab === 'CLOSED' ? 'bg-white/20 text-white' : 'bg-emerald-500/20 text-emerald-300 border border-emerald-500/30'
+                    }`}>
+                      {kpis.confirmedResolvedClosed}
+                    </span>
+                  ) : (
+                    kpis.confirmedResolvedClosed > 0 && (
+                      <span className="absolute top-1 right-1 w-2 h-2 rounded-full bg-emerald-500 ring-2 ring-slate-900" />
+                    )
+                  )}
                 </button>
 
                 {/* 3. Rejected Complaints */}
@@ -1452,20 +1500,29 @@ export const DashboardView = ({
                     setActiveTab('REJECTED');
                     setMobileMenuOpen(false);
                   }}
-                  className={`w-full flex items-center justify-between px-2.5 py-2 rounded-lg text-xs font-semibold transition-all ${
+                  title={sidebarCollapsed ? `Rejected Complaints (${allRejectedComplaints.length})` : undefined}
+                  className={`w-full flex items-center ${sidebarCollapsed ? 'justify-center px-2 py-2.5 relative' : 'justify-between px-3 py-2'} rounded-xl text-xs font-semibold transition-all group cursor-pointer ${
                     activeTab === 'REJECTED'
-                      ? 'bg-rose-600 text-white shadow-md'
-                      : 'text-slate-400 hover:text-white hover:bg-slate-800'
+                      ? 'bg-linear-to-r from-rose-600 to-red-600 text-white shadow-lg shadow-rose-500/25 font-bold ring-1 ring-white/20'
+                      : 'text-slate-300 hover:text-white hover:bg-white/10 hover:translate-x-0.5'
                   }`}
                 >
                   <div className="flex items-center gap-2.5">
-                    <XCircle className="w-3.5 h-3.5 shrink-0 text-rose-400" />
-                    <span>Rejected Complaints</span>
+                    <XCircle className={`w-3.5 h-3.5 shrink-0 transition-transform group-hover:scale-110 ${activeTab === 'REJECTED' ? 'text-white' : 'text-rose-400'}`} />
+                    {!sidebarCollapsed && <span>Rejected Complaints</span>}
                   </div>
-                  {allRejectedComplaints.length > 0 && (
-                    <span className="px-1.5 py-0.5 rounded-full bg-rose-500/20 text-rose-300 font-mono text-[9px] font-bold">
-                      {allRejectedComplaints.length}
-                    </span>
+                  {!sidebarCollapsed ? (
+                    allRejectedComplaints.length > 0 && (
+                      <span className={`px-1.5 py-0.5 rounded-full font-mono text-[9px] font-bold ${
+                        activeTab === 'REJECTED' ? 'bg-white/20 text-white' : 'bg-rose-500/20 text-rose-300 border border-rose-500/30'
+                      }`}>
+                        {allRejectedComplaints.length}
+                      </span>
+                    )
+                  ) : (
+                    allRejectedComplaints.length > 0 && (
+                      <span className="absolute top-1 right-1 w-2 h-2 rounded-full bg-rose-500 ring-2 ring-slate-900" />
+                    )
                   )}
                 </button>
 
@@ -1476,48 +1533,64 @@ export const DashboardView = ({
                     setActiveTab('REOPENED');
                     setMobileMenuOpen(false);
                   }}
-                  className={`w-full flex items-center justify-between px-2.5 py-2 rounded-lg text-xs font-semibold transition-all ${
+                  title={sidebarCollapsed ? `Reopened Complaints (${totalReopenedCount})` : undefined}
+                  className={`w-full flex items-center ${sidebarCollapsed ? 'justify-center px-2 py-2.5 relative' : 'justify-between px-3 py-2'} rounded-xl text-xs font-semibold transition-all group cursor-pointer ${
                     activeTab === 'REOPENED'
-                      ? 'bg-purple-600 text-white shadow-md'
-                      : 'text-slate-400 hover:text-white hover:bg-slate-800'
+                      ? 'bg-linear-to-r from-purple-600 to-violet-600 text-white shadow-lg shadow-purple-500/25 font-bold ring-1 ring-white/20'
+                      : 'text-slate-300 hover:text-white hover:bg-white/10 hover:translate-x-0.5'
                   }`}
                 >
                   <div className="flex items-center gap-2.5">
-                    <RotateCcw className="w-3.5 h-3.5 shrink-0 text-purple-400" />
-                    <span>Reopened Complaints</span>
+                    <RotateCcw className={`w-3.5 h-3.5 shrink-0 transition-transform group-hover:scale-110 ${activeTab === 'REOPENED' ? 'text-white' : 'text-purple-400'}`} />
+                    {!sidebarCollapsed && <span>Reopened Complaints</span>}
                   </div>
-                  {totalReopenedCount > 0 ? (
-                    <span className="px-1.5 py-0.5 rounded-full bg-purple-500/20 text-purple-300 font-mono text-[9px] font-bold">
-                      {totalReopenedCount}
-                    </span>
+                  {!sidebarCollapsed ? (
+                    totalReopenedCount > 0 ? (
+                      <span className={`px-1.5 py-0.5 rounded-full font-mono text-[9px] font-bold ${
+                        activeTab === 'REOPENED' ? 'bg-white/20 text-white' : 'bg-purple-500/20 text-purple-300 border border-purple-500/30'
+                      }`}>
+                        {totalReopenedCount}
+                      </span>
+                    ) : (
+                      <span className="text-[10px] text-slate-500 font-mono">0</span>
+                    )
                   ) : (
-                    <span className="text-[10px] text-slate-500 font-mono">0</span>
+                    totalReopenedCount > 0 && (
+                      <span className="absolute top-1 right-1 w-2 h-2 rounded-full bg-purple-500 ring-2 ring-slate-900" />
+                    )
                   )}
                 </button>
 
-                {/* 4. SLA Breached Tab (Dedicated Tab) */}
+                {/* 5. SLA Breached Tab (Dedicated Tab) */}
                 <button
                   type="button"
                   onClick={() => {
                     setActiveTab('SLA');
                     setMobileMenuOpen(false);
                   }}
-                  className={`w-full flex items-center justify-between px-2.5 py-2 rounded-lg text-xs font-semibold transition-all ${
+                  title={sidebarCollapsed ? `SLA Breached (${kpis.overdueComplaints})` : undefined}
+                  className={`w-full flex items-center ${sidebarCollapsed ? 'justify-center px-2 py-2.5 relative' : 'justify-between px-3 py-2'} rounded-xl text-xs font-semibold transition-all group cursor-pointer ${
                     activeTab === 'SLA'
-                      ? 'bg-rose-600 text-white shadow-md'
-                      : 'text-slate-400 hover:text-white hover:bg-slate-800'
+                      ? 'bg-linear-to-r from-red-600 to-rose-600 text-white shadow-lg shadow-red-500/30 font-bold ring-1 ring-white/20'
+                      : 'text-slate-300 hover:text-white hover:bg-white/10 hover:translate-x-0.5'
                   }`}
                 >
                   <div className="flex items-center gap-2.5">
-                    <AlertTriangle className="w-3.5 h-3.5 shrink-0 text-rose-400" />
-                    <span>SLA Breached</span>
+                    <AlertTriangle className={`w-3.5 h-3.5 shrink-0 transition-transform group-hover:scale-110 ${activeTab === 'SLA' ? 'text-white' : 'text-rose-400'}`} />
+                    {!sidebarCollapsed && <span>SLA Breached</span>}
                   </div>
-                  {kpis.overdueComplaints > 0 ? (
-                    <span className="px-1.5 py-0.5 rounded-full bg-rose-500 text-white font-bold text-[9px] animate-pulse">
-                      {kpis.overdueComplaints}
-                    </span>
+                  {!sidebarCollapsed ? (
+                    kpis.overdueComplaints > 0 ? (
+                      <span className="px-1.5 py-0.5 rounded-full bg-rose-500 text-white font-bold text-[9px] shadow-sm animate-pulse">
+                        {kpis.overdueComplaints}
+                      </span>
+                    ) : (
+                      <span className="text-[10px] text-slate-500 font-mono">0</span>
+                    )
                   ) : (
-                    <span className="text-[10px] text-slate-500 font-mono">0</span>
+                    kpis.overdueComplaints > 0 && (
+                      <span className="absolute top-1 right-1 w-2.5 h-2.5 rounded-full bg-rose-500 animate-pulse ring-2 ring-slate-900" />
+                    )
                   )}
                 </button>
 
@@ -1527,14 +1600,15 @@ export const DashboardView = ({
                     setActiveTab('WARDS');
                     setMobileMenuOpen(false);
                   }}
-                  className={`w-full flex items-center gap-2.5 px-2.5 py-2 rounded-lg text-xs font-semibold transition-all ${
+                  title={sidebarCollapsed ? "Parshad List" : undefined}
+                  className={`w-full flex items-center ${sidebarCollapsed ? 'justify-center px-2 py-2.5' : 'gap-2.5 px-3 py-2'} rounded-xl text-xs font-semibold transition-all group cursor-pointer ${
                     activeTab === 'WARDS'
-                      ? 'bg-blue-600 text-white shadow-md'
-                      : 'text-slate-400 hover:text-white hover:bg-slate-800'
+                      ? 'bg-linear-to-r from-blue-600 to-cyan-700 text-white shadow-lg shadow-blue-500/25 font-bold ring-1 ring-white/20'
+                      : 'text-slate-300 hover:text-white hover:bg-white/10 hover:translate-x-0.5'
                   }`}
                 >
-                  <MapPin className="w-3.5 h-3.5 shrink-0" />
-                  <span>Parshad List</span>
+                  <MapPin className={`w-3.5 h-3.5 shrink-0 transition-transform group-hover:scale-110 ${activeTab === 'WARDS' ? 'text-white' : 'text-sky-400'}`} />
+                  {!sidebarCollapsed && <span>Parshad List</span>}
                 </button>
 
                 <button
@@ -1543,14 +1617,15 @@ export const DashboardView = ({
                     setActiveTab('DEPARTMENTS');
                     setMobileMenuOpen(false);
                   }}
-                  className={`w-full flex items-center gap-2.5 px-2.5 py-2 rounded-lg text-xs font-semibold transition-all ${
+                  title={sidebarCollapsed ? "Departments" : undefined}
+                  className={`w-full flex items-center ${sidebarCollapsed ? 'justify-center px-2 py-2.5' : 'gap-2.5 px-3 py-2'} rounded-xl text-xs font-semibold transition-all group cursor-pointer ${
                     activeTab === 'DEPARTMENTS'
-                      ? 'bg-blue-600 text-white shadow-md'
-                      : 'text-slate-400 hover:text-white hover:bg-slate-800'
+                      ? 'bg-linear-to-r from-blue-600 to-cyan-700 text-white shadow-lg shadow-blue-500/25 font-bold ring-1 ring-white/20'
+                      : 'text-slate-300 hover:text-white hover:bg-white/10 hover:translate-x-0.5'
                   }`}
                 >
-                  <Building2 className="w-3.5 h-3.5 shrink-0" />
-                  <span>Departments</span>
+                  <Building2 className={`w-3.5 h-3.5 shrink-0 transition-transform group-hover:scale-110 ${activeTab === 'DEPARTMENTS' ? 'text-white' : 'text-indigo-400'}`} />
+                  {!sidebarCollapsed && <span>Departments</span>}
                 </button>
 
                 <button
@@ -1559,14 +1634,15 @@ export const DashboardView = ({
                     setActiveTab('SETTINGS');
                     setMobileMenuOpen(false);
                   }}
-                  className={`w-full flex items-center gap-2.5 px-2.5 py-2 rounded-lg text-xs font-semibold transition-all ${
+                  title={sidebarCollapsed ? "Settings & Hours" : undefined}
+                  className={`w-full flex items-center ${sidebarCollapsed ? 'justify-center px-2 py-2.5' : 'gap-2.5 px-3 py-2'} rounded-xl text-xs font-semibold transition-all group cursor-pointer ${
                     activeTab === 'SETTINGS'
-                      ? 'bg-blue-600 text-white shadow-md'
-                      : 'text-slate-400 hover:text-white hover:bg-slate-800'
+                      ? 'bg-linear-to-r from-blue-600 to-cyan-700 text-white shadow-lg shadow-blue-500/25 font-bold ring-1 ring-white/20'
+                      : 'text-slate-300 hover:text-white hover:bg-white/10 hover:translate-x-0.5'
                   }`}
                 >
-                  <Settings className="w-3.5 h-3.5 shrink-0" />
-                  <span>Settings &amp; Hours</span>
+                  <Settings className={`w-3.5 h-3.5 shrink-0 transition-transform group-hover:scale-110 ${activeTab === 'SETTINGS' ? 'text-white' : 'text-slate-400'}`} />
+                  {!sidebarCollapsed && <span>Settings &amp; Hours</span>}
                 </button>
 
                 <button
@@ -1575,14 +1651,15 @@ export const DashboardView = ({
                     setActiveTab('SUPPORT');
                     setMobileMenuOpen(false);
                   }}
-                  className={`w-full flex items-center gap-2.5 px-2.5 py-2 rounded-lg text-xs font-semibold transition-all ${
+                  title={sidebarCollapsed ? "Help & Support" : undefined}
+                  className={`w-full flex items-center ${sidebarCollapsed ? 'justify-center px-2 py-2.5' : 'gap-2.5 px-3 py-2'} rounded-xl text-xs font-semibold transition-all group cursor-pointer ${
                     activeTab === 'SUPPORT'
-                      ? 'bg-blue-600 text-white shadow-md'
-                      : 'text-slate-400 hover:text-white hover:bg-slate-800'
+                      ? 'bg-linear-to-r from-blue-600 to-cyan-700 text-white shadow-lg shadow-blue-500/25 font-bold ring-1 ring-white/20'
+                      : 'text-slate-300 hover:text-white hover:bg-white/10 hover:translate-x-0.5'
                   }`}
                 >
-                  <Headphones className="w-3.5 h-3.5 shrink-0" />
-                  <span>Help &amp; Support</span>
+                  <Headphones className={`w-3.5 h-3.5 shrink-0 transition-transform group-hover:scale-110 ${activeTab === 'SUPPORT' ? 'text-white' : 'text-emerald-400'}`} />
+                  {!sidebarCollapsed && <span>Help &amp; Support</span>}
                 </button>
               </div>
             </div>
@@ -1595,46 +1672,54 @@ export const DashboardView = ({
             href="https://chittortech.in"
             target="_blank"
             rel="noopener noreferrer"
-            className="group flex items-center justify-between p-2 rounded-xl bg-gradient-to-r from-sky-950/70 to-slate-900/90 hover:from-sky-900/60 hover:to-slate-850 border border-sky-700/40 hover:border-sky-500/60 transition-all text-white shadow-sm"
+            className={`group flex items-center ${sidebarCollapsed ? 'justify-center p-2' : 'justify-between p-2.5'} rounded-xl sidebar-glass-card hover:bg-sky-500/10 hover:border-sky-400/50 transition-all text-white shadow-md cursor-pointer`}
             title="Visit ChittorTech Software Official Portal (chittortech.in)"
           >
             <div className="flex items-center gap-2 min-w-0">
-              <div className="p-1 rounded-md bg-sky-500/20 text-amber-400 group-hover:rotate-12 transition-transform shrink-0">
+              <div className="p-1.5 rounded-lg bg-sky-500/20 text-amber-400 group-hover:rotate-12 transition-transform shrink-0 border border-sky-400/20">
                 <Sparkles className="w-3.5 h-3.5" />
               </div>
-              <div className="truncate">
-                <p className="text-[10px] font-bold text-sky-200 leading-tight truncate">ChittorTech Software</p>
-                <p className="text-[9px] text-slate-400 font-mono truncate">chittortech.in &bull; Official</p>
-              </div>
+              {!sidebarCollapsed && (
+                <div className="truncate">
+                  <p className="text-[10px] font-bold text-sky-200 leading-tight truncate">ChittorTech Software</p>
+                  <p className="text-[9px] text-slate-400 font-mono truncate">chittortech.in &bull; Official</p>
+                </div>
+              )}
             </div>
-            <ArrowUpRight className="w-3.5 h-3.5 text-sky-400 group-hover:translate-x-0.5 group-hover:-translate-y-0.5 transition-transform shrink-0" />
+            {!sidebarCollapsed && (
+              <ArrowUpRight className="w-3.5 h-3.5 text-sky-400 group-hover:translate-x-0.5 group-hover:-translate-y-0.5 transition-transform shrink-0" />
+            )}
           </a>
         </div>
 
         {/* User Profile Pill at Bottom */}
-        <div className="p-2 border-t border-slate-800">
-          <div className="flex items-center justify-between p-2 rounded-lg bg-slate-800/70 text-white">
+        <div className="p-2 border-t border-white/10 bg-black/20">
+          <div className={`flex items-center ${sidebarCollapsed ? 'justify-center p-1.5' : 'justify-between p-2'} rounded-xl sidebar-glass-card text-white`}>
             <div className="flex items-center gap-2 min-w-0">
-              <div className="w-7 h-7 rounded-full bg-blue-600 flex items-center justify-center font-bold text-[11px] uppercase shrink-0">
+              <div className="w-7 h-7 rounded-full bg-linear-to-br from-blue-500 to-indigo-600 flex items-center justify-center font-bold text-[11px] uppercase shrink-0 shadow-sm ring-1 ring-white/20">
                 {userRole.substring(0, 2)}
               </div>
-              <div className="truncate">
-                <p className="text-[11px] font-semibold truncate leading-tight">
-                  {userRole.replace('_', ' ')}
-                </p>
-                <p className="text-[9px] text-slate-400 truncate">
-                  {userEmail}
-                </p>
-              </div>
+              {!sidebarCollapsed && (
+                <div className="truncate">
+                  <p className="text-[11px] font-semibold truncate leading-tight">
+                    {userRole.replace('_', ' ')}
+                  </p>
+                  <p className="text-[9px] text-slate-400 truncate">
+                    {userEmail}
+                  </p>
+                </div>
+              )}
             </div>
-            <button
-              type="button"
-              onClick={onLogout}
-              title="Sign Out"
-              className="p-1 rounded text-slate-400 hover:text-rose-400 hover:bg-slate-700/60 transition-colors shrink-0"
-            >
-              <LogOut className="w-3.5 h-3.5" />
-            </button>
+            {!sidebarCollapsed && (
+              <button
+                type="button"
+                onClick={onLogout}
+                title="Sign Out"
+                className="p-1.5 rounded-lg text-slate-400 hover:text-rose-400 hover:bg-rose-500/10 transition-colors shrink-0 cursor-pointer"
+              >
+                <LogOut className="w-3.5 h-3.5" />
+              </button>
+            )}
           </div>
         </div>
       </aside>
@@ -1650,9 +1735,15 @@ export const DashboardView = ({
               <div className="flex items-center gap-2.5 min-w-0">
                 <button
                   type="button"
-                  onClick={() => setMobileMenuOpen(prev => !prev)}
-                  title="Toggle Menu"
-                  className="p-1.5 rounded-lg border border-slate-200 text-slate-700 hover:bg-slate-100 md:hidden transition-colors shrink-0"
+                  onClick={() => {
+                    if (typeof window !== 'undefined' && window.innerWidth < 768) {
+                      setMobileMenuOpen(prev => !prev);
+                    } else {
+                      setSidebarCollapsed(prev => !prev);
+                    }
+                  }}
+                  title="Toggle Navigation Sidebar (MacBook / Laptop Screen Optimization)"
+                  className="p-1.5 rounded-lg border border-slate-200 text-slate-700 hover:bg-slate-100 transition-colors shrink-0 cursor-pointer shadow-2xs"
                 >
                   <Menu className="w-4 h-4" />
                 </button>
@@ -1754,7 +1845,7 @@ export const DashboardView = ({
         </header>
 
         {/* Dashboard Body */}
-        <main className="p-6 space-y-6 print:p-0 print:space-y-3 print:block print:w-full">
+        <main className="p-3 sm:p-4 lg:p-6 space-y-4 lg:space-y-6 print:p-0 print:space-y-3 print:block print:w-full">
           {/* Official Printable Nagar Parishad Letterhead */}
           <div className="hidden print:block mb-4 pb-3 border-b-2 border-slate-900 text-center space-y-1">
             <h1 className="text-xl font-black text-slate-900 uppercase tracking-wider">
@@ -1799,12 +1890,12 @@ export const DashboardView = ({
           {(activeTab === 'DASHBOARD' || activeTab === 'TICKETS' || activeTab === 'CLOSED' || activeTab === 'REOPENED' || activeTab === 'SLA') && (
             <>
               {/* Greeting & Scope Switcher (Today Only vs View More / All History) */}
-              <div className="flex flex-wrap items-center justify-between gap-4 print:hidden">
+              <div className="greeting-banner rounded-xl sm:rounded-2xl p-4 sm:p-5 lg:p-6 shadow-lg flex flex-wrap items-center justify-between gap-4 print:hidden">
                 <div>
-                  <h1 className="text-2xl font-bold text-slate-900 flex items-center gap-2">
+                  <h1 className="text-2xl font-bold text-white flex items-center gap-2">
                     Good morning, {userRole.replace('_', ' ')} 👋
                   </h1>
-                  <p className="text-xs text-slate-500 mt-1">
+                  <p className="text-xs text-blue-100 mt-1">
                     {dateScopeMode === 'TODAY' && !isFilterActive
                       ? "Showing Today's Complaints only (आज की शिकायतें). Click 'View More / All History' to see all previous records."
                       : "Showing complaints based on active filter scope."}
@@ -1813,7 +1904,7 @@ export const DashboardView = ({
 
                 <div className="flex items-center gap-2.5 flex-wrap">
                   {/* Today vs All Records Scope Switcher */}
-                  <div className="inline-flex items-center p-1 rounded-xl bg-slate-100 border border-slate-200 shadow-2xs">
+                  <div className="inline-flex items-center p-1 rounded-xl bg-white/15 border border-white/20 shadow-md backdrop-blur-sm">
                     <button
                       type="button"
                       onClick={() => {
@@ -1824,15 +1915,15 @@ export const DashboardView = ({
                       }}
                       className={`px-3 py-1.5 rounded-lg text-xs font-bold transition-all flex items-center gap-1.5 cursor-pointer ${
                         dateScopeMode === 'TODAY' && !isFilterActive
-                          ? 'bg-blue-600 text-white shadow-xs'
-                          : 'text-slate-600 hover:text-slate-900'
+                          ? 'bg-white text-blue-700 shadow-md'
+                          : 'text-blue-100 hover:text-white hover:bg-white/10'
                       }`}
                       title="Show only today's registrations"
                     >
                       <Calendar className="w-3.5 h-3.5" />
                       <span>Today Only (आज)</span>
                       <span className={`px-1.5 py-0.2 rounded-full text-[10px] font-mono ${
-                        dateScopeMode === 'TODAY' && !isFilterActive ? 'bg-white/20 text-white' : 'bg-slate-200 text-slate-700'
+                        dateScopeMode === 'TODAY' && !isFilterActive ? 'bg-blue-100 text-blue-700' : 'bg-white/20 text-white'
                       }`}>
                         {todayTicketsCount}
                       </span>
@@ -1845,51 +1936,59 @@ export const DashboardView = ({
                       }}
                       className={`px-3 py-1.5 rounded-lg text-xs font-bold transition-all flex items-center gap-1.5 cursor-pointer ${
                         dateScopeMode === 'ALL' || isFilterActive
-                          ? 'bg-blue-600 text-white shadow-xs'
-                          : 'text-slate-600 hover:text-slate-900'
+                          ? 'bg-white text-blue-700 shadow-md'
+                          : 'text-blue-100 hover:text-white hover:bg-white/10'
                       }`}
                       title="Show all complaints history"
                     >
                       <Layers className="w-3.5 h-3.5" />
                       <span>View More / All History (सभी पुरानी)</span>
                       <span className={`px-1.5 py-0.2 rounded-full text-[10px] font-mono ${
-                        dateScopeMode === 'ALL' || isFilterActive ? 'bg-white/20 text-white' : 'bg-slate-200 text-slate-700'
+                        dateScopeMode === 'ALL' || isFilterActive ? 'bg-blue-100 text-blue-700' : 'bg-white/20 text-white'
                       }`}>
                         {activeTicketsCount}
                       </span>
                     </button>
                   </div>
 
-                  <span className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-full bg-emerald-50 border border-emerald-200 text-emerald-700 text-xs font-semibold">
+                  <span className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-full bg-emerald-500/20 border border-emerald-400/40 text-emerald-100 text-xs font-semibold backdrop-blur-sm">
                     <span className="w-2 h-2 rounded-full bg-emerald-500 animate-pulse" />
                     Live Sync: Central DB Connected
                   </span>
                 </div>
               </div>
 
-          {/* ADVANCED FILTERS CARD (Matches Reference Screenshot 2) */}
-          <div className="bg-white rounded-2xl border border-slate-200 shadow-2xs overflow-hidden print:hidden">
+          {/* ADVANCED FILTERS CARD (Streamlined, Compact 1-Row Layout) */}
+          <div className="bg-white rounded-xl border border-slate-200 shadow-sm overflow-hidden print:hidden">
             <div 
               onClick={() => setFiltersOpen(!filtersOpen)}
-              className="flex items-center justify-between px-5 py-3.5 bg-slate-50/80 cursor-pointer border-b border-slate-200"
+              className="flex items-center justify-between px-3.5 py-2 bg-gradient-to-r from-slate-50 to-blue-50/40 cursor-pointer border-b border-slate-200 hover:bg-slate-100/70 transition-colors"
             >
               <div className="flex items-center gap-2">
-                <Filter className="w-4 h-4 text-slate-600" />
+                <Filter className="w-3.5 h-3.5 text-blue-600" />
                 <span className="font-bold text-xs text-slate-800">Advanced Filters</span>
-                <span className="text-[11px] text-slate-400">(Click to {filtersOpen ? 'collapse' : 'expand'} options)</span>
+                <span className="text-[10px] text-slate-400 font-medium hidden sm:inline">
+                  ({filtersOpen ? 'Click to minimize' : 'Filter by Date, Ward, Dept'})
+                </span>
+                {isFilterActive && (
+                  <span className="px-1.5 py-0.2 rounded-full bg-blue-600 text-white font-bold text-[9px] animate-pulse">
+                    Active Filter Applied
+                  </span>
+                )}
               </div>
-              <button className="text-slate-500">
-                {filtersOpen ? <ChevronUp className="w-4 h-4" /> : <ChevronDown className="w-4 h-4" />}
-              </button>
+              <div className="flex items-center gap-1 text-slate-500 text-[10px] font-semibold">
+                <span>{filtersOpen ? 'Hide' : 'Expand'}</span>
+                {filtersOpen ? <ChevronUp className="w-3.5 h-3.5" /> : <ChevronDown className="w-3.5 h-3.5" />}
+              </div>
             </div>
 
             {filtersOpen && (
-              <div className="p-5 space-y-4">
+              <div className="p-3 space-y-2.5">
                 {/* Date Validation Error Alert */}
                 {dateError && (
-                  <div className="p-3.5 rounded-xl bg-rose-50 border border-rose-300 text-rose-900 text-xs font-semibold flex items-center justify-between gap-2 shadow-2xs animate-in fade-in duration-150">
+                  <div className="p-2.5 rounded-lg bg-rose-50 border border-rose-300 text-rose-900 text-xs font-semibold flex items-center justify-between gap-2 shadow-2xs animate-in fade-in duration-150">
                     <div className="flex items-center gap-2">
-                      <AlertTriangle className="w-4 h-4 text-rose-600 shrink-0" />
+                      <AlertTriangle className="w-3.5 h-3.5 text-rose-600 shrink-0" />
                       <span>{dateError}</span>
                     </div>
                     <button
@@ -1903,10 +2002,11 @@ export const DashboardView = ({
                   </div>
                 )}
 
-                <div className="grid grid-cols-1 md:grid-cols-4 gap-4">
+                {/* Compact 1-Row Grid for All Filters + Actions */}
+                <div className="grid grid-cols-2 sm:grid-cols-2 lg:grid-cols-5 gap-2.5 items-end">
                   {/* From Date */}
-                  <div className="space-y-1">
-                    <label className="text-[10px] font-bold uppercase tracking-wider text-slate-500">FROM DATE</label>
+                  <div className="space-y-0.5">
+                    <label className="text-[9px] font-bold uppercase tracking-wider text-slate-500 block">FROM DATE</label>
                     <input
                       type="date"
                       value={fromDate}
@@ -1916,15 +2016,15 @@ export const DashboardView = ({
                         setFromDate(e.target.value);
                         setDateError(null);
                       }}
-                      className={`w-full px-3 py-2 rounded-lg border text-xs text-slate-700 bg-white transition-all ${
-                        dateError && fromDate > todayStr ? 'border-rose-400 ring-2 ring-rose-200' : 'border-slate-200'
+                      className={`w-full px-2.5 py-1.5 rounded-lg border text-xs text-slate-700 bg-white transition-all ${
+                        dateError && fromDate > todayStr ? 'border-rose-400 ring-1 ring-rose-200' : 'border-slate-200'
                       }`}
                     />
                   </div>
 
                   {/* To Date */}
-                  <div className="space-y-1">
-                    <label className="text-[10px] font-bold uppercase tracking-wider text-slate-500">TO DATE</label>
+                  <div className="space-y-0.5">
+                    <label className="text-[9px] font-bold uppercase tracking-wider text-slate-500 block">TO DATE</label>
                     <input
                       type="date"
                       value={toDate}
@@ -1934,19 +2034,19 @@ export const DashboardView = ({
                         setToDate(e.target.value);
                         setDateError(null);
                       }}
-                      className={`w-full px-3 py-2 rounded-lg border text-xs text-slate-700 bg-white transition-all ${
-                        dateError && toDate > todayStr ? 'border-rose-400 ring-2 ring-rose-200' : 'border-slate-200'
+                      className={`w-full px-2.5 py-1.5 rounded-lg border text-xs text-slate-700 bg-white transition-all ${
+                        dateError && toDate > todayStr ? 'border-rose-400 ring-1 ring-rose-200' : 'border-slate-200'
                       }`}
                     />
                   </div>
 
                   {/* Ward Filter (1 to 60) */}
-                  <div className="space-y-1">
-                    <label className="text-[10px] font-bold uppercase tracking-wider text-slate-500">CHITTORGARH WARD</label>
+                  <div className="space-y-0.5">
+                    <label className="text-[9px] font-bold uppercase tracking-wider text-slate-500 block">CHITTORGARH WARD</label>
                     <select
                       value={selectedWard}
                       onChange={(e) => setSelectedWard(e.target.value)}
-                      className="w-full px-3 py-2 rounded-lg border border-slate-200 text-xs text-slate-700 bg-white font-medium"
+                      className="w-full px-2.5 py-1.5 rounded-lg border border-slate-200 text-xs text-slate-700 bg-white font-medium"
                     >
                       <option value="ALL">All 60 Wards</option>
                       {wards.map((w) => {
@@ -1961,14 +2061,14 @@ export const DashboardView = ({
                   </div>
 
                   {/* Department Filter */}
-                  <div className="space-y-1">
-                    <label className="text-[10px] font-bold uppercase tracking-wider text-slate-500">DEPARTMENT</label>
+                  <div className="space-y-0.5">
+                    <label className="text-[9px] font-bold uppercase tracking-wider text-slate-500 block">DEPARTMENT</label>
                     <select
                       value={selectedDepartment}
                       onChange={(e) => setSelectedDepartment(e.target.value)}
-                      className="w-full px-3 py-2 rounded-lg border border-slate-200 text-xs text-slate-700 bg-white font-medium"
+                      className="w-full px-2.5 py-1.5 rounded-lg border border-slate-200 text-xs text-slate-700 bg-white font-medium"
                     >
-                      <option value="ALL">All Municipal Departments</option>
+                      <option value="ALL">All Departments</option>
                       {departments.map((d) => (
                         <option key={d.id} value={d.name}>
                           {d.name}
@@ -1976,71 +2076,69 @@ export const DashboardView = ({
                       ))}
                     </select>
                   </div>
-                </div>
 
-                {/* Filter Action Buttons (Apply & Clear) */}
-                <div className="flex flex-wrap items-center justify-between gap-3 pt-2 border-t border-slate-100">
-                  <div className="flex items-center gap-2">
+                  {/* Apply & Reset Buttons in 5th Column */}
+                  <div className="flex items-center gap-1.5">
                     <button
                       type="button"
                       onClick={handleApplyFilters}
-                      className="px-5 py-2.5 rounded-xl bg-blue-600 hover:bg-blue-700 text-white font-bold text-xs flex items-center gap-2 shadow-sm transition-all cursor-pointer"
+                      className="flex-1 py-1.5 px-3 rounded-lg bg-blue-600 hover:bg-blue-700 active:scale-95 text-white font-bold text-xs flex items-center justify-center gap-1 shadow-xs transition-all cursor-pointer"
                     >
-                      <Filter className="w-3.5 h-3.5" />
-                      Apply Filters
+                      <Filter className="w-3 h-3" />
+                      <span>Apply</span>
                     </button>
                     {(fromDate || toDate || selectedWard !== 'ALL' || selectedDepartment !== 'ALL' || isFilterActive) && (
                       <button
                         type="button"
                         onClick={handleClearFilters}
-                        className="px-4 py-2.5 rounded-xl border border-slate-300 bg-white hover:bg-slate-100 text-slate-700 font-bold text-xs flex items-center gap-1.5 transition-all cursor-pointer"
+                        title="Reset Filters"
+                        className="py-1.5 px-2 rounded-lg border border-slate-300 bg-white hover:bg-slate-100 text-slate-700 font-bold text-xs flex items-center justify-center transition-all cursor-pointer"
                       >
-                        <RotateCcw className="w-3.5 h-3.5 text-slate-500" />
-                        Reset Filters
+                        <RotateCcw className="w-3 h-3 text-slate-500" />
                       </button>
                     )}
                   </div>
+                </div>
 
-                  {/* Helpful Note */}
-                  <div className="text-[11px] text-slate-500 flex items-center gap-1.5">
-                    <span>💡</span>
-                    <span>To view complaints for a <strong>single specific date</strong>, select the same date in both From &amp; To Date.</span>
-                  </div>
+                {/* Helpful Note Inline */}
+                <div className="text-[10px] text-slate-400 flex items-center gap-1 pt-0.5">
+                  <span>💡</span>
+                  <span>To view complaints for a <strong>single specific date</strong>, select the same date in both From &amp; To Date.</span>
                 </div>
 
                 {/* Active Filter Status Bar */}
                 {isFilterActive && (
-                  <div className="p-3 rounded-xl bg-blue-50/80 border border-blue-200 text-xs text-blue-900 flex flex-wrap items-center justify-between gap-2 shadow-2xs">
-                    <div className="flex items-center gap-2 flex-wrap">
-                      <span className="w-2 h-2 rounded-full bg-blue-600 animate-pulse shrink-0" />
-                      <span className="font-bold">Active Filter:</span>
+                  <div className="p-2 sm:p-2.5 rounded-lg bg-blue-50/80 border border-blue-200 text-xs text-blue-900 flex flex-wrap items-center justify-between gap-2 shadow-2xs">
+                    <div className="flex items-center gap-1.5 flex-wrap">
+                      <span className="w-1.5 h-1.5 rounded-full bg-blue-600 animate-pulse shrink-0" />
+                      <span className="font-bold">Active:</span>
                       {appliedFromDate && appliedToDate ? (
                         appliedFromDate === appliedToDate ? (
-                          <span className="bg-white px-2 py-0.5 rounded border border-blue-200 font-mono font-bold">Date: {appliedFromDate}</span>
+                          <span className="bg-white px-1.5 py-0.2 rounded border border-blue-200 font-mono font-bold text-[11px]">Date: {appliedFromDate}</span>
                         ) : (
-                          <span className="bg-white px-2 py-0.5 rounded border border-blue-200 font-mono font-bold">{appliedFromDate} to {appliedToDate}</span>
+                          <span className="bg-white px-1.5 py-0.2 rounded border border-blue-200 font-mono font-bold text-[11px]">{appliedFromDate} to {appliedToDate}</span>
                         )
                       ) : appliedFromDate ? (
-                        <span className="bg-white px-2 py-0.5 rounded border border-blue-200 font-mono font-bold">From {appliedFromDate} onwards</span>
+                        <span className="bg-white px-1.5 py-0.2 rounded border border-blue-200 font-mono font-bold text-[11px]">From {appliedFromDate} onwards</span>
                       ) : appliedToDate ? (
-                        <span className="bg-white px-2 py-0.5 rounded border border-blue-200 font-mono font-bold">Up to {appliedToDate}</span>
+                        <span className="bg-white px-1.5 py-0.2 rounded border border-blue-200 font-mono font-bold text-[11px]">Up to {appliedToDate}</span>
                       ) : null}
                       {appliedWard !== 'ALL' && (
-                        <span className="bg-white px-2 py-0.5 rounded border border-blue-200 font-bold">Ward {appliedWard}</span>
+                        <span className="bg-white px-1.5 py-0.2 rounded border border-blue-200 font-bold text-[11px]">Ward {appliedWard}</span>
                       )}
                       {appliedDepartment !== 'ALL' && (
-                        <span className="bg-white px-2 py-0.5 rounded border border-blue-200 font-bold">{appliedDepartment}</span>
+                        <span className="bg-white px-1.5 py-0.2 rounded border border-blue-200 font-bold text-[11px]">{appliedDepartment}</span>
                       )}
-                      <span className="bg-blue-600 text-white px-2 py-0.5 rounded-full font-bold text-[10px]">
-                        {filteredTickets.length} complaints found
+                      <span className="bg-blue-600 text-white px-1.5 py-0.2 rounded-full font-bold text-[9.5px]">
+                        {filteredTickets.length} found
                       </span>
                     </div>
                     <button
                       type="button"
                       onClick={handleClearFilters}
-                      className="text-xs font-bold text-blue-700 hover:text-blue-900 underline cursor-pointer shrink-0"
+                      className="text-[11px] font-bold text-blue-700 hover:text-blue-900 underline cursor-pointer shrink-0"
                     >
-                      Clear Filter ✕
+                      Clear ✕
                     </button>
                   </div>
                 )}
@@ -2049,9 +2147,9 @@ export const DashboardView = ({
           </div>
 
           {/* 6 OFFICIAL KPI CARDS (Workflow D: Portal Manager & Executive SLA Monitoring) */}
-          <div className="grid grid-cols-2 md:grid-cols-3 xl:grid-cols-6 gap-3.5 print:hidden">
+          <div className="grid grid-cols-2 md:grid-cols-3 xl:grid-cols-6 gap-2.5 lg:gap-3.5 print:hidden">
             {/* Card 1: Today's Registered */}
-            <div className="bg-white p-4 rounded-2xl border border-slate-200 shadow-2xs space-y-2">
+            <div className="kpi-card-today p-4 rounded-2xl border border-blue-200 shadow-md space-y-2">
               <div className="flex items-center justify-between text-xs text-slate-500 font-medium">
                 <span>Today's Registered</span>
                 <Calendar className="w-4 h-4 text-blue-600" />
@@ -2073,7 +2171,7 @@ export const DashboardView = ({
                 setSelectedStatus('ALL');
               }}
               title="Click to view all complaints"
-              className="bg-white p-4 rounded-2xl border border-slate-200 shadow-2xs space-y-2 text-left hover:border-blue-400 hover:shadow-md transition-all active:scale-[0.98] cursor-pointer"
+              className="kpi-card-total p-4 rounded-2xl border border-slate-300 shadow-md space-y-2 text-left hover:border-blue-400 hover:shadow-lg transition-all active:scale-[0.98] cursor-pointer"
             >
               <div className="flex items-center justify-between text-xs text-slate-500 font-medium">
                 <span>Total Complaints</span>
@@ -2088,25 +2186,43 @@ export const DashboardView = ({
               </div>
             </button>
 
-            {/* Card 3: Pending Complaints */}
+            {/* Card 3: In-Progress Complaints */}
             <button
               type="button"
               onClick={() => {
                 setActiveTab('TICKETS');
-                setSelectedStatus('REGISTERED');
+                setSelectedStatus('IN_PROGRESS');
               }}
-              title="Click to filter pending complaints"
-              className="bg-white p-4 rounded-2xl border border-slate-200 shadow-2xs space-y-2 text-left hover:border-amber-400 hover:shadow-md transition-all active:scale-[0.98] cursor-pointer"
+              title="Click to view all in-progress complaints"
+              className={`kpi-card-inprogress p-4 rounded-2xl border shadow-md space-y-2 text-left hover:border-amber-400 hover:shadow-lg transition-all active:scale-[0.98] cursor-pointer ${
+                selectedStatus === 'IN_PROGRESS' && activeTab === 'TICKETS' ? 'border-amber-400 ring-2 ring-amber-200' : 'border-amber-200'
+              }`}
             >
               <div className="flex items-center justify-between text-xs text-slate-500 font-medium">
-                <span>Pending Complaints</span>
+                <span>In-Progress Complaints</span>
                 <ClockAlert className="w-4 h-4 text-amber-500" />
               </div>
-              <p className="text-2xl font-extrabold text-amber-600 font-mono">
-                {kpis.pendingComplaints}
-              </p>
-              <div className="text-[10px] text-amber-700 flex items-center justify-between">
-                <span>Awaiting resolution</span>
+              <div className="flex items-baseline justify-between">
+                <p className="text-2xl font-extrabold text-amber-600 font-mono">
+                  {kpis.inProgressComplaints}
+                </p>
+                <span className="text-[10px] font-bold text-amber-700 bg-amber-50 px-2 py-0.5 rounded-full border border-amber-200">
+                  Active
+                </span>
+              </div>
+              {/* Detailed Breakdown Badges: Officer Pending & Citizen Call Pending */}
+              <div className="flex items-center gap-1.5 pt-0.5 text-[10px] flex-wrap">
+                <span className="px-1.5 py-0.5 rounded bg-blue-50 text-blue-700 font-semibold border border-blue-200 inline-flex items-center gap-1">
+                  <span className="w-1.5 h-1.5 rounded-full bg-blue-600" />
+                  {kpis.officerPendingCount} Officer Baaki
+                </span>
+                <span className="px-1.5 py-0.5 rounded bg-amber-50 text-amber-800 font-semibold border border-amber-200 inline-flex items-center gap-1">
+                  <span className="w-1.5 h-1.5 rounded-full bg-amber-600" />
+                  {kpis.citizenPendingCount} Citizen Call Baaki
+                </span>
+              </div>
+              <div className="text-[10px] text-amber-700 flex items-center justify-between pt-0.5 border-t border-slate-100">
+                <span>Active 2-Step Workflow</span>
                 <span className="text-amber-700 font-semibold text-[9px]">Filter ➔</span>
               </div>
             </button>
@@ -2119,7 +2235,7 @@ export const DashboardView = ({
                 setSelectedStatus('CLOSED');
               }}
               title="Click to view certified completed complaints"
-              className="bg-white p-4 rounded-2xl border border-slate-200 shadow-2xs space-y-2 text-left hover:border-emerald-400 hover:shadow-md transition-all active:scale-[0.98] cursor-pointer"
+              className="kpi-card-completed p-4 rounded-2xl border border-emerald-200 shadow-md space-y-2 text-left hover:border-emerald-400 hover:shadow-lg transition-all active:scale-[0.98] cursor-pointer"
             >
               <div className="flex items-center justify-between text-xs text-slate-500 font-medium">
                 <span>Completed Complaints</span>
@@ -2141,7 +2257,7 @@ export const DashboardView = ({
                 setActiveTab('SLA');
               }}
               title="Click to inspect SLA breached complaints"
-              className="bg-white p-4 rounded-2xl border border-slate-200 shadow-2xs space-y-2 text-left hover:border-rose-400 hover:shadow-md transition-all active:scale-[0.98] cursor-pointer"
+              className="kpi-card-sla p-4 rounded-2xl border border-rose-200 shadow-md space-y-2 text-left hover:border-rose-400 hover:shadow-lg transition-all active:scale-[0.98] cursor-pointer"
             >
               <div className="flex items-center justify-between text-xs text-slate-500 font-medium">
                 <span>SLA Breached Complaints</span>
@@ -2163,7 +2279,7 @@ export const DashboardView = ({
                 setActiveTab('SLA');
               }}
               title="Click to inspect escalated cases"
-              className="bg-white p-4 rounded-2xl border border-slate-200 shadow-2xs space-y-2 text-left hover:border-purple-400 hover:shadow-md transition-all active:scale-[0.98] cursor-pointer"
+              className="kpi-card-escalated p-4 rounded-2xl border border-purple-200 shadow-md space-y-2 text-left hover:border-purple-400 hover:shadow-lg transition-all active:scale-[0.98] cursor-pointer"
             >
               <div className="flex items-center justify-between text-xs text-slate-500 font-medium">
                 <span>Escalated Cases</span>
@@ -2186,8 +2302,8 @@ export const DashboardView = ({
           {/* TAB: DASHBOARD / ALL TICKETS / CLOSED / REOPENED / SLA */}
           {(activeTab === 'DASHBOARD' || activeTab === 'TICKETS' || activeTab === 'CLOSED' || activeTab === 'REOPENED' || activeTab === 'SLA') && (
             <div className="space-y-4">
-              <div className="bg-white rounded-2xl border border-slate-200 shadow-2xs overflow-hidden print:border-none print:shadow-none print:rounded-none">
-              <div className="px-6 py-4 border-b border-slate-200 flex flex-wrap items-center justify-between gap-4 print:hidden">
+              <div className="bg-white rounded-2xl border border-slate-200 shadow-md overflow-hidden print:border-none print:shadow-none print:rounded-none">
+              <div className="px-6 py-4 border-b border-slate-200 bg-gradient-to-r from-slate-50 to-white flex flex-wrap items-center justify-between gap-4 print:hidden">
                 <div>
                   <div className="flex items-center gap-2">
                     <h3 className="text-sm font-bold text-slate-900">
@@ -2220,13 +2336,15 @@ export const DashboardView = ({
                       ? `Showing ${activeTicketsList.length} two-step certified completed complaints`
                       : activeTab === 'REOPENED'
                       ? `Showing ${activeTicketsList.length} grievances reopened after citizen dissatisfaction or pending re-verification`
+                      : selectedStatus === 'IN_PROGRESS'
+                      ? `Showing ${activeTicketsList.length} in-progress complaints (${kpis.officerPendingCount} Officer Verification Pending + ${kpis.citizenPendingCount} Citizen Call Pending)`
                       : `Showing ${activeTicketsList.length} complaints across Chittorgarh Nagar Parishad`}
                   </p>
                 </div>
 
                 <div className="flex flex-wrap items-center gap-3">
                   {/* Status Quick Filter Tabs */}
-                  <div className="inline-flex items-center p-1 rounded-xl bg-slate-100 border border-slate-200">
+                  <div className="inline-flex items-center p-1 rounded-xl bg-slate-100 border border-slate-200 shadow-sm">
                     <button
                       type="button"
                       onClick={() => {
@@ -2241,6 +2359,25 @@ export const DashboardView = ({
                     >
                       All ({activeTab === 'SLA' ? scopeTickets.filter(t => t.is_overdue && t.status !== 'CLOSED' && t.status !== 'REJECTED').length : scopeTickets.filter(t => t.status !== 'REJECTED').length})
                     </button>
+
+                    {/* In-Progress (All non-closed active complaints in 2-step pipeline) */}
+                    {activeTab !== 'SLA' && (
+                      <button
+                        type="button"
+                        onClick={() => {
+                          if (activeTab === 'CLOSED' || activeTab === 'REOPENED') setActiveTab('TICKETS');
+                          setSelectedStatus('IN_PROGRESS');
+                        }}
+                        className={`px-3 py-1.5 rounded-lg text-xs font-bold transition-all flex items-center gap-1.5 cursor-pointer ${
+                          activeTab !== 'CLOSED' && activeTab !== 'REOPENED' && selectedStatus === 'IN_PROGRESS'
+                            ? 'bg-amber-500 text-white shadow-xs'
+                            : 'text-amber-800 hover:bg-amber-50'
+                        }`}
+                      >
+                        <ClockAlert className="w-3.5 h-3.5" />
+                        <span>In-Progress ({kpis.inProgressComplaints})</span>
+                      </button>
+                    )}
 
                     {/* Step 1: Officer Verification Baaki */}
                     <button
@@ -2322,16 +2459,16 @@ export const DashboardView = ({
 
               {/* Table Container with Smooth Horizontal Scrolling & Zero Overlap */}
               <div className="overflow-x-auto print:overflow-visible border-t-2 border-slate-400 rounded-b-xl shadow-xs print:border-none print:shadow-none">
-                <table className="w-full min-w-[1260px] print:min-w-full border-collapse border border-slate-400 text-left text-xs text-slate-800">
-                  <thead className="bg-slate-100 print:static border-b-2 border-slate-500 font-bold uppercase tracking-wider text-[11px] text-slate-800 select-none">
+                <table className="w-full min-w-[960px] lg:min-w-full border-collapse border border-slate-400 text-left text-xs text-slate-800">
+                  <thead className="table-header-gradient print:static border-b-2 border-slate-500 font-bold uppercase tracking-wider text-[11px] text-white select-none">
                     <tr>
-                      <th className="px-4 py-3.5 border-r border-slate-400 w-[140px] min-w-[140px] whitespace-nowrap">Ticket ID</th>
-                      <th className="px-4 py-3.5 border-r border-slate-400 w-[170px] min-w-[170px] whitespace-nowrap">Citizen &amp; Contact</th>
-                      <th className="px-4 py-3.5 border-r border-slate-400 w-[190px] min-w-[190px]">Ward &amp; Location</th>
-                      <th className="px-4 py-3.5 border-r border-slate-400 min-w-[220px]">Department &amp; Problem</th>
-                      <th className="px-4 py-3.5 border-r border-slate-400 w-[160px] min-w-[160px] whitespace-nowrap">SLA &amp; Deadline</th>
-                      <th className="px-4 py-3.5 border-r border-slate-400 w-[175px] min-w-[175px] text-center whitespace-nowrap">Status</th>
-                      <th className="px-4 py-3.5 text-right w-[255px] min-w-[255px] whitespace-nowrap bg-slate-100 border-l border-slate-400 print:hidden">Actions</th>
+                      <th className="px-3 py-3 border-r border-slate-600 w-[110px] min-w-[100px] whitespace-nowrap">Ticket ID</th>
+                      <th className="px-3 py-3 border-r border-slate-600 w-[150px] min-w-[130px] whitespace-nowrap">Citizen &amp; Contact</th>
+                      <th className="px-3 py-3 border-r border-slate-600 w-[140px] min-w-[120px]">Ward &amp; Location</th>
+                      <th className="px-3 py-3 border-r border-slate-600 min-w-[170px]">Department &amp; Problem</th>
+                      <th className="px-3 py-3 border-r border-slate-600 w-[140px] min-w-[125px] whitespace-nowrap">SLA &amp; Deadline</th>
+                      <th className="px-3 py-3 border-r border-slate-600 w-[140px] min-w-[130px] text-center whitespace-nowrap">Status</th>
+                      <th className="sticky right-0 z-20 px-3 py-3 text-right w-[170px] min-w-[160px] whitespace-nowrap table-header-gradient border-l border-slate-500 shadow-[-6px_0_12px_rgba(0,0,0,0.25)] print:static">Actions</th>
                     </tr>
                   </thead>
                   <tbody className="divide-y divide-slate-400 bg-white">
@@ -2362,15 +2499,15 @@ export const DashboardView = ({
                       </tr>
                     ) : (
                       paginatedTickets.map((ticket) => (
-                        <tr key={ticket.id} className="hover:bg-blue-50/70 even:bg-slate-50/50 transition-colors">
+                        <tr key={ticket.id} className="group hover:bg-blue-50/70 even:bg-slate-50/50 transition-colors">
                           {/* Ticket Number */}
-                          <td className="px-4 py-3.5 border-r border-slate-400 align-middle whitespace-nowrap">
+                          <td className="px-3 py-2.5 border-r border-slate-400 align-middle whitespace-nowrap">
                             <div className="flex flex-col gap-1 items-start">
-                              <span className="font-mono font-bold text-slate-900 bg-slate-100 px-2.5 py-1 rounded border border-slate-400 text-xs tracking-tight whitespace-nowrap">
+                              <span className="font-mono font-bold text-slate-900 bg-slate-100 px-2 py-0.5 rounded border border-slate-400 text-xs tracking-tight whitespace-nowrap">
                                 {ticket.ticket_number}
                               </span>
                               {ticket.is_escalated && (
-                                <span className="px-2 py-0.5 rounded-full bg-purple-100 text-purple-800 font-bold text-[9px] uppercase tracking-wide border border-purple-300 whitespace-nowrap">
+                                <span className="px-1.5 py-0.5 rounded-full bg-purple-100 text-purple-800 font-bold text-[8.5px] uppercase tracking-wide border border-purple-300 whitespace-nowrap">
                                   Escalated
                                 </span>
                               )}
@@ -2378,12 +2515,12 @@ export const DashboardView = ({
                           </td>
 
                           {/* Citizen */}
-                          <td className="px-4 py-3.5 border-r border-slate-400 align-middle whitespace-nowrap">
-                            <p className="font-bold text-slate-900 text-xs whitespace-nowrap">{ticket.citizen_name}</p>
-                            <div className="flex items-center gap-2 mt-0.5">
+                          <td className="px-3 py-2.5 border-r border-slate-400 align-middle whitespace-nowrap">
+                            <p className="font-bold text-slate-900 text-xs whitespace-nowrap truncate max-w-[130px]" title={ticket.citizen_name}>{ticket.citizen_name}</p>
+                            <div className="flex items-center gap-1.5 mt-0.5">
                               <a 
                                 href={`tel:${ticket.citizen_phone}`} 
-                                className="inline-flex items-center gap-1.5 text-blue-600 hover:text-blue-800 hover:underline font-mono text-xs whitespace-nowrap font-medium"
+                                className="inline-flex items-center gap-1 text-blue-600 hover:text-blue-800 hover:underline font-mono text-[11px] whitespace-nowrap font-medium"
                                 title="Call Citizen"
                               >
                                 <Phone className="w-3 h-3 text-blue-500 shrink-0" />
@@ -2396,30 +2533,30 @@ export const DashboardView = ({
                                 target="_blank"
                                 rel="noopener noreferrer"
                                 title={`Chat with citizen ${ticket.citizen_name} on WhatsApp`}
-                                className="px-1.5 py-0.5 rounded bg-emerald-50 hover:bg-emerald-100 text-emerald-700 border border-emerald-300 transition-colors inline-flex items-center gap-1 shrink-0 text-[10px] font-bold"
+                                className="px-1.5 py-0.5 rounded bg-emerald-50 hover:bg-emerald-100 text-emerald-700 border border-emerald-300 transition-colors inline-flex items-center gap-1 shrink-0 text-[9px] font-bold"
                               >
-                                <MessageSquare className="w-3 h-3 text-emerald-600" />
+                                <MessageSquare className="w-2.5 h-2.5 text-emerald-600" />
                                 <span>WA Chat</span>
                               </a>
                             </div>
                           </td>
 
                           {/* Ward & Address */}
-                          <td className="px-4 py-3.5 border-r border-slate-400 align-middle">
-                            <div className="space-y-0.5">
-                              <span className="inline-block px-2 py-0.5 rounded bg-slate-100 text-slate-800 font-bold text-[11px] border border-slate-400 whitespace-nowrap">
+                          <td className="px-3 py-2.5 border-r border-slate-400 align-middle">
+                            <div className="space-y-0.5 max-w-[150px]">
+                              <span className="inline-block px-1.5 py-0.5 rounded bg-slate-100 text-slate-800 font-bold text-[10px] border border-slate-400 whitespace-nowrap">
                                 Ward {ticket.ward_number}
                               </span>
-                              <p className="text-slate-700 text-xs leading-relaxed" title={ticket.address}>
+                              <p className="text-slate-700 text-xs leading-relaxed truncate" title={ticket.address}>
                                 {ticket.address}
                               </p>
                             </div>
                           </td>
 
                           {/* Department & Problem */}
-                          <td className="px-4 py-3.5 border-r border-slate-400 align-middle">
-                            <div className="space-y-0.5">
-                              <span className="font-bold text-slate-900 text-xs block leading-snug">
+                          <td className="px-3 py-2.5 border-r border-slate-400 align-middle">
+                            <div className="space-y-0.5 max-w-[200px]">
+                              <span className="font-bold text-slate-900 text-xs block leading-snug truncate" title={ticket.department_name}>
                                 {ticket.department_name}
                               </span>
                               <p className="text-slate-600 text-[11px] leading-relaxed line-clamp-2" title={ticket.problem_description}>
@@ -2429,29 +2566,29 @@ export const DashboardView = ({
                           </td>
 
                           {/* SLA */}
-                          <td className="px-4 py-3.5 border-r border-slate-400 align-middle whitespace-nowrap">
-                            <div className="flex items-center gap-1.5 font-semibold text-xs whitespace-nowrap">
+                          <td className="px-3 py-2.5 border-r border-slate-400 align-middle whitespace-nowrap">
+                            <div className="flex items-center gap-1 font-semibold text-xs whitespace-nowrap">
                               <ClockAlert className={`w-3.5 h-3.5 shrink-0 ${ticket.is_overdue ? 'text-rose-600' : 'text-slate-500'}`} />
                               <span className={ticket.is_overdue ? 'text-rose-600 font-bold' : 'text-slate-800 font-medium'}>
                                 {formatDeadlineIST(ticket.sla_deadline)}
                               </span>
                             </div>
                             {ticket.is_overdue ? (
-                              <span className="inline-block mt-1 px-2 py-0.5 rounded bg-rose-50 text-rose-700 border border-rose-300 text-[10px] font-bold whitespace-nowrap">
+                              <span className="inline-block mt-0.5 px-1.5 py-0.2 rounded bg-rose-50 text-rose-700 border border-rose-300 text-[9px] font-bold whitespace-nowrap">
                                 ⚠️ SLA Overdue
                               </span>
                             ) : (
-                              <span className="inline-block mt-1 px-2 py-0.5 rounded bg-emerald-50 text-emerald-700 border border-emerald-300 text-[10px] font-medium whitespace-nowrap">
+                              <span className="inline-block mt-0.5 px-1.5 py-0.2 rounded bg-emerald-50 text-emerald-700 border border-emerald-300 text-[9px] font-medium whitespace-nowrap">
                                 On Schedule
                               </span>
                             )}
                           </td>
 
                           {/* Status - Explicit 2-Step Closure Lifecycle Indicator */}
-                          <td className="px-4 py-3.5 border-r border-slate-400 align-middle text-center whitespace-nowrap">
+                          <td className="px-3 py-2.5 border-r border-slate-400 align-middle text-center whitespace-nowrap">
                             {ticket.status === 'REJECTED' ? (
-                              <span className="inline-flex items-center gap-1 px-3 py-1 rounded-full text-[10px] font-bold uppercase tracking-wider text-center whitespace-nowrap shadow-2xs border bg-rose-50 text-rose-800 border-rose-300">
-                                <XCircle className="w-3.5 h-3.5 text-rose-600" />
+                              <span className="inline-flex items-center gap-1 px-2.5 py-0.5 rounded-full text-[9.5px] font-bold uppercase tracking-wider text-center whitespace-nowrap shadow-2xs border bg-rose-50 text-rose-800 border-rose-300">
+                                <XCircle className="w-3 h-3 text-rose-600" />
                                 <span>Rejected</span>
                               </span>
                             ) : ticket.status === 'REOPENED' || ticket.is_reopened ? (
@@ -2459,9 +2596,9 @@ export const DashboardView = ({
                                 type="button"
                                 onClick={() => setSelectedTicketForClosure(ticket)}
                                 title="Complaint reopened by citizen! Click to inspect and resolve."
-                                className="inline-flex items-center gap-1.5 px-3 py-1 rounded-full text-[10px] font-bold uppercase tracking-wider text-center whitespace-nowrap shadow-2xs border bg-purple-100 text-purple-900 border-purple-400 ring-2 ring-purple-300/80 animate-pulse cursor-pointer hover:bg-purple-200 transition-colors"
+                                className="inline-flex items-center gap-1 px-2.5 py-0.5 rounded-full text-[9.5px] font-bold uppercase tracking-wider text-center whitespace-nowrap shadow-2xs border bg-purple-100 text-purple-900 border-purple-400 ring-2 ring-purple-300/80 animate-pulse cursor-pointer hover:bg-purple-200 transition-colors"
                               >
-                                <RotateCcw className="w-3 h-3 text-purple-700" />
+                                <RotateCcw className="w-2.5 h-2.5 text-purple-700" />
                                 <span>Reopened {(ticket.reopen_count ?? 0) > 0 ? `(${ticket.reopen_count}x)` : ''}</span>
                               </button>
                             ) : ticket.status !== 'CLOSED' ? (
@@ -2470,7 +2607,7 @@ export const DashboardView = ({
                                   type="button"
                                   onClick={() => setSelectedTicketForClosure(ticket)}
                                   title="Officer confirmed resolution! Step 2 Citizen call is pending."
-                                  className="inline-flex items-center gap-1.5 px-3 py-1 rounded-full text-[10px] font-bold uppercase tracking-wider text-center whitespace-nowrap shadow-2xs border bg-amber-100 text-amber-900 border-amber-400 ring-2 ring-amber-300/80 animate-pulse cursor-pointer hover:bg-amber-200 transition-colors"
+                                  className="inline-flex items-center gap-1 px-2.5 py-0.5 rounded-full text-[9.5px] font-bold uppercase tracking-wider text-center whitespace-nowrap shadow-2xs border bg-amber-100 text-amber-900 border-amber-400 ring-2 ring-amber-300/80 animate-pulse cursor-pointer hover:bg-amber-200 transition-colors"
                                 >
                                   <span className="w-1.5 h-1.5 rounded-full bg-amber-600 animate-ping" />
                                   <span>📞 Citizen Conf. Baaki</span>
@@ -2480,22 +2617,22 @@ export const DashboardView = ({
                                   type="button"
                                   onClick={() => setSelectedTicketForClosure(ticket)}
                                   title="Step 1 Pending: Click to call officer and verify field completion."
-                                  className="inline-flex items-center gap-1 px-3 py-1 rounded-full text-[10px] font-bold uppercase tracking-wider text-center whitespace-nowrap shadow-2xs border bg-blue-50 text-blue-800 border-blue-300 cursor-pointer hover:bg-blue-100 transition-colors"
+                                  className="inline-flex items-center gap-1 px-2.5 py-0.5 rounded-full text-[9.5px] font-bold uppercase tracking-wider text-center whitespace-nowrap shadow-2xs border bg-blue-50 text-blue-800 border-blue-300 cursor-pointer hover:bg-blue-100 transition-colors"
                                 >
                                   <ShieldCheck className="w-3 h-3 text-blue-600" />
                                   <span>Step 1: Officer Baaki</span>
                                 </button>
                               )
                             ) : (
-                              <span className="inline-flex items-center gap-1 px-3 py-1 rounded-full text-[10px] font-bold uppercase tracking-wider text-center whitespace-nowrap shadow-2xs border bg-emerald-50 text-emerald-800 border-emerald-300">
-                                <CheckCircle2 className="w-3.5 h-3.5 text-emerald-600" />
+                              <span className="inline-flex items-center gap-1 px-2.5 py-0.5 rounded-full text-[9.5px] font-bold uppercase tracking-wider text-center whitespace-nowrap shadow-2xs border bg-emerald-50 text-emerald-800 border-emerald-300">
+                                <CheckCircle2 className="w-3 h-3 text-emerald-600" />
                                 <span>2-Step Complete</span>
                               </span>
                             )}
                           </td>
 
-                          {/* Actions (Clean & Properly Sized with No Overlap) */}
-                          <td className="px-3.5 py-3.5 align-middle text-right whitespace-nowrap bg-white border-l border-slate-300 print:hidden">
+                          {/* Actions - Sticky Right Column: ALWAYS visible on MacBooks and smaller screens */}
+                          <td className="sticky right-0 z-10 px-3 py-2.5 align-middle text-right whitespace-nowrap bg-white group-hover:bg-blue-50/90 group-even:bg-slate-50 border-l border-slate-300 shadow-[-6px_0_12px_rgba(0,0,0,0.08)] print:static print:shadow-none">
                             <div className="flex items-center justify-end gap-1.5 whitespace-nowrap">
                               {ticket.status === 'REJECTED' ? (
                                 <span className="px-2.5 py-1 rounded-lg bg-rose-50 text-rose-800 border border-rose-300 font-bold text-[11px] inline-flex items-center gap-1 whitespace-nowrap">
@@ -2638,8 +2775,8 @@ export const DashboardView = ({
           {/* TAB: INTAKE QUEUE (Helpline Calls & WhatsApp Intake) */}
           {activeTab === 'INTAKE' && (
             <div className="space-y-4">
-              <div className="bg-white rounded-2xl border border-slate-200 shadow-2xs overflow-hidden print:border-none print:shadow-none print:rounded-none">
-              <div className="px-6 py-4 border-b border-slate-200 flex flex-wrap items-center justify-between gap-4 print:hidden">
+              <div className="bg-white rounded-2xl border border-slate-200 shadow-md overflow-hidden print:border-none print:shadow-none print:rounded-none">
+              <div className="px-6 py-4 border-b border-slate-200 bg-gradient-to-r from-slate-50 to-white flex flex-wrap items-center justify-between gap-4 print:hidden">
                 <div>
                   <h3 className="text-sm font-bold text-slate-900">
                     Incoming Unverified Complaint Intake Queue (Workflow A &amp; B)
@@ -2723,7 +2860,7 @@ export const DashboardView = ({
 
               <div className="overflow-x-auto print:overflow-visible border-t-2 border-slate-400 print:border-none">
                 <table className="w-full min-w-[1050px] print:min-w-full border-collapse border border-slate-400 text-left text-xs text-slate-800">
-                  <thead className="bg-slate-100 print:static border-b-2 border-slate-500 font-bold uppercase tracking-wider text-[11px] text-slate-800 select-none">
+                  <thead className="table-header-gradient print:static border-b-2 border-slate-500 font-bold uppercase tracking-wider text-[11px] text-white select-none">
                     <tr>
                       <th className="px-4 py-3.5 border-r border-slate-400 w-[170px] min-w-[170px] whitespace-nowrap">Channel &amp; Time</th>
                       <th className="px-4 py-3.5 border-r border-slate-400 w-[180px] min-w-[180px] whitespace-nowrap">Citizen Info</th>
@@ -2807,7 +2944,7 @@ export const DashboardView = ({
                             </span>
                           </td>
 
-                          <td className="px-4 py-3.5 align-middle text-right whitespace-nowrap print:hidden">
+                          <td className="sticky right-0 z-10 px-3 py-2.5 align-middle text-right whitespace-nowrap bg-white group-hover:bg-blue-50/70 border-l border-slate-300 shadow-[-6px_0_12px_rgba(0,0,0,0.08)] print:static print:shadow-none">
                             {intake.status === 'PENDING_REVIEW' ? (
                               <button
                                 type="button"
@@ -2872,9 +3009,9 @@ export const DashboardView = ({
           {/* TAB: REJECTED COMPLAINTS (अस्वीकृत शिकायत ऑडिट रजिस्टर) */}
           {activeTab === 'REJECTED' && (
             <div className="space-y-4">
-              <div className="bg-white rounded-2xl border border-slate-200 shadow-2xs overflow-hidden print:border-none print:shadow-none print:rounded-none">
+              <div className="bg-white rounded-2xl border border-slate-200 shadow-md overflow-hidden print:border-none print:shadow-none print:rounded-none">
                 {/* Header Section */}
-                <div className="px-4 sm:px-6 py-4 border-b border-slate-200 flex flex-col sm:flex-row sm:items-center justify-between gap-3 print:hidden">
+                <div className="px-4 sm:px-6 py-4 border-b border-slate-200 bg-gradient-to-r from-slate-50 to-white flex flex-col sm:flex-row sm:items-center justify-between gap-3 print:hidden">
                   <div>
                     <h3 className="text-sm font-bold text-slate-900 flex items-center gap-2">
                       <XCircle className="w-4 h-4 text-rose-600 shrink-0" />
@@ -3092,17 +3229,17 @@ export const DashboardView = ({
 
                 {/* Desktop & Printable Table View */}
                 <div className="hidden md:block print:block overflow-x-auto print:overflow-visible border-t-2 border-slate-400 print:border-none">
-                  <table className="w-full min-w-[1050px] print:min-w-full border-collapse border border-slate-400 text-left text-xs text-slate-800">
-                    <thead className="bg-slate-100 print:static border-b-2 border-slate-500 font-bold uppercase tracking-wider text-[11px] text-slate-800 select-none">
+                  <table className="w-full min-w-[920px] lg:min-w-full border-collapse border border-slate-400 text-left text-xs text-slate-800">
+                    <thead className="table-header-gradient print:static border-b-2 border-slate-500 font-bold uppercase tracking-wider text-[11px] text-white select-none">
                       <tr>
-                        <th className="px-4 py-3.5 border-r border-slate-400 w-[130px] min-w-[130px] whitespace-nowrap">Ticket ID</th>
-                        <th className="px-4 py-3.5 border-r border-slate-400 w-[150px] min-w-[150px] whitespace-nowrap">Channel &amp; Time</th>
-                        <th className="px-4 py-3.5 border-r border-slate-400 w-[170px] min-w-[170px] whitespace-nowrap">Citizen Info</th>
-                        <th className="px-4 py-3.5 border-r border-slate-400 w-[190px] min-w-[190px]">Ward &amp; Locality</th>
-                        <th className="px-4 py-3.5 border-r border-slate-400 min-w-[220px]">Reported Problem</th>
-                        <th className="px-4 py-3.5 border-r border-slate-400 min-w-[240px]">Rejection Reason (अस्वीकृति का कारण)</th>
-                        <th className="px-4 py-3.5 border-r border-slate-400 w-[110px] min-w-[110px] text-center whitespace-nowrap">Status</th>
-                        <th className="px-4 py-3.5 text-right w-[110px] min-w-[110px] whitespace-nowrap print:hidden">Contact</th>
+                        <th className="px-3 py-3 border-r border-slate-600 w-[120px] min-w-[110px] whitespace-nowrap">Ticket ID</th>
+                        <th className="px-3 py-3 border-r border-slate-600 w-[140px] min-w-[130px] whitespace-nowrap">Channel &amp; Time</th>
+                        <th className="px-3 py-3 border-r border-slate-600 w-[160px] min-w-[140px] whitespace-nowrap">Citizen Info</th>
+                        <th className="px-3 py-3 border-r border-slate-600 w-[160px] min-w-[140px]">Ward &amp; Locality</th>
+                        <th className="px-3 py-3 border-r border-slate-600 min-w-[180px]">Reported Problem</th>
+                        <th className="px-3 py-3 border-r border-slate-600 min-w-[180px]">Rejection Reason (अस्वीकृति का कारण)</th>
+                        <th className="px-3 py-3 border-r border-slate-600 w-[110px] min-w-[100px] text-center whitespace-nowrap">Status</th>
+                        <th className="sticky right-0 z-20 px-3 py-3 text-right w-[110px] min-w-[100px] whitespace-nowrap table-header-gradient border-l border-slate-500 shadow-[-6px_0_12px_rgba(0,0,0,0.25)] print:static">Contact</th>
                       </tr>
                     </thead>
                     <tbody className="divide-y divide-slate-400 bg-white">
@@ -3183,7 +3320,7 @@ export const DashboardView = ({
                             </td>
 
                             {/* Actions */}
-                            <td className="px-4 py-3.5 align-middle text-right whitespace-nowrap print:hidden">
+                            <td className="sticky right-0 z-10 px-3 py-2.5 align-middle text-right whitespace-nowrap bg-white group-hover:bg-rose-50/70 border-l border-slate-300 shadow-[-6px_0_12px_rgba(0,0,0,0.08)] print:static print:shadow-none">
                               <div className="flex items-center justify-end gap-1.5">
                                 <a
                                   href={`tel:${item.citizen_phone}`}
@@ -3216,8 +3353,8 @@ export const DashboardView = ({
           {/* TAB: 60 WARDS DIRECTORY */}
           {activeTab === 'WARDS' && (
             <div className="space-y-4">
-              <div className="bg-white rounded-2xl border border-slate-200 shadow-2xs overflow-hidden print:border-none print:shadow-none print:rounded-none">
-              <div className="px-6 py-4 border-b border-slate-200 flex flex-wrap items-center justify-between gap-4 print:hidden">
+              <div className="bg-white rounded-2xl border border-slate-200 shadow-md overflow-hidden print:border-none print:shadow-none print:rounded-none">
+              <div className="px-6 py-4 border-b border-slate-200 bg-gradient-to-r from-slate-50 to-white flex flex-wrap items-center justify-between gap-4 print:hidden">
                 <div>
                   <h3 className="text-sm font-bold text-slate-900">
                     Chittorgarh Nagar Parishad: Parshad List (All 60 Wards)
@@ -3267,16 +3404,16 @@ export const DashboardView = ({
               </div>
 
               <div className="overflow-x-auto max-h-[600px] print:max-h-none print:overflow-visible border-t-2 border-slate-400 print:border-none">
-                <table className="w-full min-w-[1050px] print:min-w-full border-collapse border border-slate-400 text-left text-xs text-slate-800">
-                  <thead className="sticky top-0 print:static bg-slate-100 border-b-2 border-slate-500 font-bold uppercase tracking-wider text-[11px] text-slate-800 z-10 select-none">
+                <table className="w-full min-w-[900px] lg:min-w-full border-collapse border border-slate-400 text-left text-xs text-slate-800">
+                  <thead className="sticky top-0 print:static table-header-gradient border-b-2 border-slate-500 font-bold uppercase tracking-wider text-[11px] text-white z-10 select-none">
                     <tr>
-                      <th className="px-4 py-3.5 border-r border-slate-400 w-[100px] min-w-[100px] whitespace-nowrap">Ward</th>
-                      <th className="px-4 py-3.5 border-r border-slate-400 w-[190px] min-w-[190px]">Ward Name</th>
-                      <th className="px-4 py-3.5 border-r border-slate-400 w-[130px] min-w-[130px] whitespace-nowrap">Zone</th>
-                      <th className="px-4 py-3.5 border-r border-slate-400 w-[170px] min-w-[170px]">Parshad</th>
-                      <th className="px-4 py-3.5 border-r border-slate-400 w-[160px] min-w-[160px] whitespace-nowrap">Parshad Phone Number</th>
-                      <th className="px-4 py-3.5 border-r border-slate-400 min-w-[200px]">Key Landmarks</th>
-                      <th className="px-4 py-3.5 text-right w-[140px] min-w-[140px] whitespace-nowrap print:hidden">Actions</th>
+                      <th className="px-3 py-3 border-r border-slate-600 w-[90px] min-w-[80px] whitespace-nowrap">Ward</th>
+                      <th className="px-3 py-3 border-r border-slate-600 w-[170px] min-w-[150px]">Ward Name</th>
+                      <th className="px-3 py-3 border-r border-slate-600 w-[120px] min-w-[100px] whitespace-nowrap">Zone</th>
+                      <th className="px-3 py-3 border-r border-slate-600 w-[160px] min-w-[140px]">Parshad</th>
+                      <th className="px-3 py-3 border-r border-slate-600 w-[150px] min-w-[130px] whitespace-nowrap">Parshad Phone Number</th>
+                      <th className="px-3 py-3 border-r border-slate-600 min-w-[180px]">Key Landmarks</th>
+                      <th className="sticky right-0 z-20 px-3 py-3 text-right w-[120px] min-w-[110px] whitespace-nowrap table-header-gradient border-l border-slate-500 shadow-[-6px_0_12px_rgba(0,0,0,0.25)] print:static">Actions</th>
                     </tr>
                   </thead>
                   <tbody className="divide-y divide-slate-400 bg-white">
@@ -3312,7 +3449,7 @@ export const DashboardView = ({
                           <td className="px-4 py-3.5 border-r border-slate-400 align-middle text-slate-600 text-xs">
                             {ward.key_landmarks}
                           </td>
-                          <td className="px-4 py-3.5 align-middle text-right whitespace-nowrap print:hidden">
+                          <td className="sticky right-0 z-10 px-3 py-2.5 align-middle text-right whitespace-nowrap bg-white group-hover:bg-blue-50/70 border-l border-slate-300 shadow-[-6px_0_12px_rgba(0,0,0,0.08)] print:static print:shadow-none">
                             <button
                               type="button"
                               onClick={() => setEditingWard(ward)}
@@ -3336,8 +3473,8 @@ export const DashboardView = ({
           {/* TAB: MUNICIPAL DEPARTMENTS DIRECTORY */}
           {activeTab === 'DEPARTMENTS' && (
             <div className="space-y-4">
-              <div className="bg-white rounded-2xl border border-slate-200 shadow-2xs overflow-hidden">
-              <div className="px-6 py-4 border-b border-slate-200 flex flex-wrap items-center justify-between gap-4">
+              <div className="bg-white rounded-2xl border border-slate-200 shadow-md overflow-hidden">
+              <div className="px-6 py-4 border-b border-slate-200 bg-gradient-to-r from-slate-50 to-white flex flex-wrap items-center justify-between gap-4">
                 <div>
                   <h3 className="text-sm font-bold text-slate-900">
                     Nagar Parishad Chittorgarh: Municipal Departments Directory
@@ -3379,15 +3516,15 @@ export const DashboardView = ({
               </div>
 
               <div className="overflow-x-auto border-t-2 border-slate-400">
-                <table className="w-full min-w-[1000px] border-collapse border border-slate-400 text-left text-xs text-slate-800">
-                  <thead className="bg-slate-100 border-b-2 border-slate-500 font-bold uppercase tracking-wider text-[11px] text-slate-800 select-none">
+                <table className="w-full min-w-[880px] lg:min-w-full border-collapse border border-slate-400 text-left text-xs text-slate-800">
+                  <thead className="table-header-gradient border-b-2 border-slate-500 font-bold uppercase tracking-wider text-[11px] text-white select-none">
                     <tr>
-                      <th className="px-4 py-3.5 border-r border-slate-400 w-[110px] min-w-[110px] whitespace-nowrap">Code</th>
-                      <th className="px-4 py-3.5 border-r border-slate-400 min-w-[220px]">Department Name</th>
-                      <th className="px-4 py-3.5 border-r border-slate-400 w-[150px] min-w-[150px] whitespace-nowrap">Standard SLA</th>
-                      <th className="px-4 py-3.5 border-r border-slate-400 w-[190px] min-w-[190px]">Nodal Officer</th>
-                      <th className="px-4 py-3.5 border-r border-slate-400 w-[170px] min-w-[170px] whitespace-nowrap">Officer Phone</th>
-                      <th className="px-4 py-3.5 text-right w-[170px] min-w-[170px] whitespace-nowrap">Actions</th>
+                      <th className="px-3 py-3 border-r border-slate-600 w-[100px] min-w-[90px] whitespace-nowrap">Code</th>
+                      <th className="px-3 py-3 border-r border-slate-600 min-w-[180px]">Department Name</th>
+                      <th className="px-3 py-3 border-r border-slate-600 w-[130px] min-w-[120px] whitespace-nowrap">Standard SLA</th>
+                      <th className="px-3 py-3 border-r border-slate-600 w-[170px] min-w-[150px]">Nodal Officer</th>
+                      <th className="px-3 py-3 border-r border-slate-600 w-[150px] min-w-[140px] whitespace-nowrap">Officer Phone</th>
+                      <th className="sticky right-0 z-20 px-3 py-3 text-right w-[150px] min-w-[140px] whitespace-nowrap table-header-gradient border-l border-slate-500 shadow-[-6px_0_12px_rgba(0,0,0,0.25)]">Actions</th>
                     </tr>
                   </thead>
                   <tbody className="divide-y divide-slate-400 bg-white">
@@ -3421,7 +3558,7 @@ export const DashboardView = ({
                               <span>{dept.head_officer_phone}</span>
                             </a>
                           </td>
-                          <td className="px-4 py-3.5 align-middle text-right whitespace-nowrap">
+                          <td className="sticky right-0 z-10 px-3 py-2.5 align-middle text-right whitespace-nowrap bg-white group-hover:bg-blue-50/70 border-l border-slate-300 shadow-[-6px_0_12px_rgba(0,0,0,0.08)]">
                             <div className="flex items-center justify-end gap-1.5">
                               <button
                                 type="button"
@@ -3498,7 +3635,7 @@ export const DashboardView = ({
               </div>
 
               {/* Row 2: Configured Department SLA Deadlines & Concerned Officers (Dynamic from departments) */}
-              <div className="bg-white rounded-2xl border border-slate-200 shadow-2xs overflow-hidden">
+              <div className="bg-white rounded-2xl border border-slate-200 shadow-md overflow-hidden">
                 <div className="p-5 border-b border-slate-200 flex flex-wrap items-center justify-between gap-4 bg-slate-50/70">
                   <div>
                     <h3 className="font-bold text-slate-900 text-sm flex items-center gap-2">

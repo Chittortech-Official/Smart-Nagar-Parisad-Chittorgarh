@@ -2,8 +2,68 @@
 
 @layer base {
   body {
-    @apply bg-slate-50 text-slate-800 antialiased font-sans min-h-screen selection:bg-blue-600 selection:text-white;
+    @apply bg-slate-100 text-slate-800 antialiased font-sans min-h-screen selection:bg-blue-600 selection:text-white;
   }
+}
+
+/* KPI card gradient overlays */
+.kpi-card-today {
+  background: linear-gradient(135deg, #eff6ff 0%, #dbeafe 100%);
+  border-left: 4px solid #3b82f6;
+}
+.kpi-card-total {
+  background: linear-gradient(135deg, #f8fafc 0%, #e2e8f0 100%);
+  border-left: 4px solid #475569;
+}
+.kpi-card-inprogress {
+  background: linear-gradient(135deg, #fffbeb 0%, #fef3c7 100%);
+  border-left: 4px solid #f59e0b;
+}
+.kpi-card-completed {
+  background: linear-gradient(135deg, #ecfdf5 0%, #d1fae5 100%);
+  border-left: 4px solid #10b981;
+}
+.kpi-card-sla {
+  background: linear-gradient(135deg, #fff1f2 0%, #fecdd3 100%);
+  border-left: 4px solid #ef4444;
+}
+.kpi-card-escalated {
+  background: linear-gradient(135deg, #faf5ff 0%, #e9d5ff 100%);
+  border-left: 4px solid #8b5cf6;
+}
+
+/* Greeting banner gradient */
+.greeting-banner {
+  background: linear-gradient(135deg, #1e3a5f 0%, #1e40af 50%, #3b82f6 100%);
+}
+
+/* Table header gradient */
+.table-header-gradient {
+  background: linear-gradient(180deg, #1e293b 0%, #334155 100%);
+}
+
+/* Sidebar executive theme */
+.sidebar-navy-gradient {
+  background: linear-gradient(180deg, #0c1427 0%, #111c35 45%, #090e1a 100%);
+  border-right: 1px solid rgba(255, 255, 255, 0.08);
+}
+
+.sidebar-glass-card {
+  background: rgba(255, 255, 255, 0.04);
+  backdrop-filter: blur(8px);
+  border: 1px solid rgba(255, 255, 255, 0.08);
+}
+
+.sidebar-brand-glow {
+  background: linear-gradient(135deg, rgba(30, 58, 138, 0.4) 0%, rgba(15, 23, 42, 0.8) 100%);
+  border-bottom: 1px solid rgba(59, 130, 246, 0.2);
+}
+
+/* Subtle dot pattern for main bg */
+.main-content-bg {
+  background-color: #f1f5f9;
+  background-image: radial-gradient(#cbd5e1 0.5px, transparent 0.5px);
+  background-size: 20px 20px;
 }
 
 /* Custom scrollbars */
